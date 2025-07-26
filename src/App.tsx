@@ -234,8 +234,166 @@ function App() {
   // Sonsuz döngüyü önlemek için flag
   const shouldAskNewQuestionRef = React.useRef(false);
 
+  // **YENİ**: Kullanıcı soru sorma modu için özel state
+  const [isUserQuestionMode, setIsUserQuestionMode] = React.useState(false);
+  
+  // **YENİ**: Normal buddy cycle'ı tamamen durdurmak için flag
+  const [buddyCyclePaused, setBuddyCyclePaused] = React.useState(false);
+
+  // **YENİ**: Inactivity timer (1 dakika mikrofon kullanılmazsa soru sor)
+  const [lastMicrophoneActivity, setLastMicrophoneActivity] = React.useState<number>(Date.now());
+  const inactivityTimerRef = React.useRef<number | undefined>(undefined);
+
+  // **YENİ**: Chat panel state'leri
+  const [isChatPanelOpen, setIsChatPanelOpen] = React.useState(false);
+  const [chatMessages, setChatMessages] = React.useState<Array<{
+    id: string;
+    type: 'user' | 'ai';
+    text: string;
+    timestamp: number;
+  }>>([]);
+
   // Ses için state
   const [buddyAudio, setBuddyAudio] = React.useState<HTMLAudioElement | null>(null);
+
+  // **YENİ**: Chat panel auto-scroll referansı
+  const chatMessagesEndRef = React.useRef<HTMLDivElement>(null);
+
+  // **YENİ**: Chat'e mesaj ekleme fonksiyonları (duplicate kontrolü ile)
+  const addChatMessage = React.useCallback((type: 'user' | 'ai', text: string) => {
+    // **DÜZELTME**: Duplicate mesaj kontrolü
+    setChatMessages(prev => {
+      // Son 3 mesajda aynı text var mı kontrol et
+      const recentMessages = prev.slice(-3);
+      const isDuplicate = recentMessages.some(msg => 
+        msg.type === type && 
+        msg.text === text && 
+        (Date.now() - msg.timestamp) < 5000 // 5 saniye içinde aynı mesaj varsa duplicate
+      );
+      
+      if (isDuplicate) {
+        console.log(`🚫 Duplicate mesaj engellendi (${type}):`, text.substring(0, 50) + "...");
+        return prev; // Aynı array'i döndür, değişiklik yok
+      }
+      
+      const message = {
+        id: `${Date.now()}-${Math.random()}`,
+        type,
+        text,
+        timestamp: Date.now()
+      };
+      console.log(`💬 Chat'e ${type} mesajı eklendi:`, text.substring(0, 50) + "...");
+      return [...prev, message];
+    });
+  }, []);
+
+  // **YENİ**: Chat mesajları güncellendiğinde auto-scroll
+  React.useEffect(() => {
+    if (chatMessagesEndRef.current) {
+      chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages]);
+
+  // **YENİ**: TTS'i anında başlatma fonksiyonu (gecikme olmadan)
+  const playTTSImmediately = async (text: string) => {
+    console.log("🎵 TTS anında başlatılıyor:", text.substring(0, 50) + "...");
+    
+    // **DÜZELTME**: Emojileri ve özel karakterleri temizle
+    const cleanedText = text
+      .replace(/[\u{1F600}-\u{1F64F}]/gu, '') // Emoticons
+      .replace(/[\u{1F300}-\u{1F5FF}]/gu, '') // Miscellaneous Symbols and Pictographs
+      .replace(/[\u{1F680}-\u{1F6FF}]/gu, '') // Transport and Map Symbols
+      .replace(/[\u{1F1E0}-\u{1F1FF}]/gu, '') // Flags (iOS)
+      .replace(/[\u{2600}-\u{26FF}]/gu, '')   // Miscellaneous Symbols
+      .replace(/[\u{2700}-\u{27BF}]/gu, '')   // Dingbats
+      .replace(/🎤|🤖|👤|💬|📱|⏰|🔔|✅|❌|🎯|🔄|📊|💾|🚀|🎵|🔊|⚡|🎊|🎉/g, '') // Sık kullanılan emojiler
+      .replace(/\s+/g, ' ') // Çoklu boşlukları tek boşluğa çevir
+      .trim(); // Başlangıç ve sondaki boşlukları temizle
+
+    if (!cleanedText) {
+      console.log("❌ Temizlik sonrası metin boş, TTS atlanıyor");
+      return;
+    }
+
+    console.log("🧹 Emoji temizliği tamamlandı:", cleanedText.substring(0, 50) + "...");
+    
+    // Türkçe kontrolü
+    if (!/[çğıöşüÇĞİÖŞÜ]/.test(cleanedText) && !cleanedText.toLowerCase().includes(" mi") && !cleanedText.toLowerCase().includes(" ne")) {
+      console.log("❌ Türkçe metin değil, TTS atlanıyor");
+      return;
+    }
+
+    const apiKey = import.meta.env.VITE_ELEVEN_LABS_API_KEY;
+    
+    if (!apiKey) {
+      console.log("🔊 ElevenLabs API yok, Browser TTS anında başlatılıyor");
+      // Browser TTS'i hemen başlat
+      try {
+        const utterance = new SpeechSynthesisUtterance(cleanedText);
+        utterance.lang = 'tr-TR';
+        utterance.rate = 0.9;
+        utterance.pitch = 1;
+        speechSynthesis.speak(utterance);
+        console.log("✅ Browser TTS anında başladı");
+      } catch (browserTTSError) {
+        console.error("Browser TTS hatası:", browserTTSError);
+      }
+      return;
+    }
+
+    // ElevenLabs API kullan
+    try {
+      console.log("🌐 ElevenLabs API anında çağrılıyor...");
+      const voiceId = "TxGEqnHWrfWFTfGW9XjX"; // Josh - Net erkek sesi
+      const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
+      const body = JSON.stringify({
+        text: cleanedText,
+        model_id: "eleven_multilingual_v2",
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.8
+        }
+      });
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "xi-api-key": apiKey,
+          "Content-Type": "application/json",
+          "Accept": "audio/mpeg"
+        },
+        body
+      });
+
+      if (!response.ok) {
+        throw new Error("TTS API hatası: " + response.status);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const blob = new Blob([arrayBuffer], { type: "audio/mpeg" });
+      const audioUrl = URL.createObjectURL(blob);
+      const audio = new Audio(audioUrl);
+      
+      // **ÖNEMLI**: Hazır olur olmaz hemen çal
+      audio.play();
+      console.log("✅ ElevenLabs TTS anında çalmaya başladı");
+      
+      setBuddyAudio(audio);
+    } catch (err) {
+      console.error("ElevenLabs TTS hatası, Browser TTS'e geçiliyor:", err);
+      // Fallback: Browser TTS
+      try {
+        const utterance = new SpeechSynthesisUtterance(cleanedText);
+        utterance.lang = 'tr-TR';
+        utterance.rate = 0.9;
+        utterance.pitch = 1;
+        speechSynthesis.speak(utterance);
+        console.log("🔊 Fallback Browser TTS anında başladı");
+      } catch (browserTTSError) {
+        console.error("Browser TTS hatası da var:", browserTTSError);
+      }
+    }
+  };
 
   // Masa pozisyon seçimi için state
   const [showPositionSelector, setShowPositionSelector] = React.useState(false);
@@ -347,18 +505,36 @@ function App() {
     }
   }, [sessionStarted, sessionImage]);
 
+  // **YENİ**: Mikrofon iznini ön-yükleme (ilk kullanım gecikme sorunu için)
+  const prewarmMicrophone = React.useCallback(async () => {
+    try {
+      console.log("🎤 Mikrofon izni ön-yüklemesi yapılıyor...");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log("✅ Mikrofon izni başarıyla alındı (ön-yükleme)");
+      // Hemen kapat, sadece izin almak için
+      stream.getTracks().forEach(track => track.stop());
+    } catch (error) {
+      console.log("⚠️ Mikrofon izni ön-yüklemesi başarısız (normal):", error);
+      // Bu normal, kullanıcı ilk seferde izin verebilir
+    }
+  }, []);
+
   // 2. Sahneye geçtikten sonra 5 saniye bekle, sonra buddy promptunu yolla
   React.useEffect(() => {
     if (sceneReady && questionsJson && questionsJson.questions) {
       setBuddyResponse(null);
       setShowBuddyQuestion(false);
+      
+      // **YENİ**: Mikrofon izni ön-yüklemesi (arkaplanda)
+      prewarmMicrophone();
+      
       const timeout = setTimeout(() => {
         runBuddyPrompt();
       }, 5000);
       return () => clearTimeout(timeout);
     }
     // eslint-disable-next-line
-  }, [sceneReady, questionsJson]);
+  }, [sceneReady, questionsJson, prewarmMicrophone]);
 
   // Konuşmayı özetleme fonksiyonu
   const summarizeConversation = async (history: ConversationHistory) => {
@@ -397,8 +573,11 @@ function App() {
         setPastConversations(prev => {
           const newPastConversations = [...prev, summary];
           console.log("💾 Konuşma özeti kaydedildi, yeni past conversations:", newPastConversations);
+          console.log("🔔 shouldAskNewQuestionRef şu anda:", shouldAskNewQuestionRef.current);
           return newPastConversations;
         });
+      } else {
+        console.log("⚠️ Konuşma özeti boş, past conversations güncellenmedi");
       }
     } catch (error) {
       console.error('Konuşma özetleme hatası:', error);
@@ -448,6 +627,9 @@ function App() {
       console.log("🤖 Buddy response geldi:", parsed);
       setBuddyResponse(parsed);
       
+      // **DÜZELTME**: Buddy prompt gönderildikten sonra flag'i sıfırla
+      shouldAskNewQuestionRef.current = false;
+      
       // Conversation count'u artır
       setConversationCount(prev => prev + 1);
     } catch (err) {
@@ -458,22 +640,40 @@ function App() {
 
   // Past conversations değiştiğinde yeni soru sor
   React.useEffect(() => {
-    if (pastConversations.length > 0 && !showBuddyQuestion && !isRecording && !isProcessingResponse && shouldAskNewQuestionRef.current) {
+    console.log(`📊 Past conversations effect check: 
+      pastConversations.length: ${pastConversations.length}
+      showBuddyQuestion: ${showBuddyQuestion}
+      isRecording: ${isRecording}
+      isProcessingResponse: ${isProcessingResponse}
+      shouldAskNewQuestionRef.current: ${shouldAskNewQuestionRef.current}
+      isUserQuestionMode: ${isUserQuestionMode}
+      buddyCyclePaused: ${buddyCyclePaused}`);
+      
+    if (pastConversations.length > 0 && !showBuddyQuestion && !isRecording && !isProcessingResponse && shouldAskNewQuestionRef.current && !isUserQuestionMode && !buddyCyclePaused) {
       console.log("🔄 Past conversations güncellendi, yeni soru soruluyor...");
       shouldAskNewQuestionRef.current = false; // Flag'i sıfırla
       const timeout = setTimeout(() => {
-        runBuddyPrompt();
+        // **DÜZELTME**: Timeout içinde tekrar kontrol et
+        console.log("⏰ Past conversations timeout tetiklendi, koşulları tekrar kontrol ediliyor...");
+        if (!showBuddyQuestion && !isRecording && !isProcessingResponse && !isUserQuestionMode && !buddyCyclePaused) {
+          console.log("✅ Past conversations timeout koşulları sağlandı, runBuddyPrompt çağrılıyor");
+          runBuddyPrompt();
+        } else {
+          console.log("❌ Past conversations timeout koşulları artık sağlanmıyor");
+        }
       }, 2000); // 2 saniye bekle, sonra yeni soru sor
       
       return () => clearTimeout(timeout);
+    } else {
+      console.log("❌ Past conversations effect koşulları sağlanmadı");
     }
-  }, [pastConversations.length, showBuddyQuestion, isRecording, isProcessingResponse, runBuddyPrompt]);
+  }, [pastConversations.length, showBuddyQuestion, isRecording, isProcessingResponse, runBuddyPrompt, isUserQuestionMode, buddyCyclePaused]);
 
   // 4. Buddy sorusu geldikten sonra delay_seconds kadar bekleyip ekrana göster
   const delayTimeoutRef = React.useRef<number | undefined>(undefined);
   
   React.useEffect(() => {
-    if (buddyResponse && typeof buddyResponse.delay_seconds === "number") {
+    if (buddyResponse && typeof buddyResponse.delay_seconds === "number" && !isUserQuestionMode && !buddyCyclePaused) {
       console.log("⏰ Buddy response alındı, delay uygulanıyor:", buddyResponse.delay_seconds, "saniye");
       
       // Eğer önceki bir timeout varsa temizle
@@ -488,7 +688,25 @@ function App() {
         console.log("🔄 Kafa döndürülüyor:", headTurnValue, "kamera:", camera);
         setHeadTurn(headTurnValue);
         setShowBuddyQuestion(true);
+        
+        // **DÜZELTME**: Sadece normal buddy soruları için chat'e ekle (kullanıcı soru modunda değilse)
+        if (buddyResponse.target_question_number !== "kullanici_sorusu" && 
+            buddyResponse.target_question_number !== "devam") {
+          addChatMessage('ai', buddyResponse.ai_question);
+        }
+        
+        // **DÜZELTME**: AI soru sorduktan sonra flag'i sıfırla ki aynı anda yeni soru sorulmasın
+        shouldAskNewQuestionRef.current = false;
       }, buddyResponse.delay_seconds * 1000);
+    } else if (buddyResponse && isUserQuestionMode) {
+      // Kullanıcı soru modundaysa delay olmadan direkt göster
+      console.log("👤 Kullanıcı soru modu - delay yok, direkt gösteriliyor");
+      setShowBuddyQuestion(true);
+      
+      // **NOT**: Kullanıcı soru modunda chat'e ekleme processUserQuestionAudio'da yapılıyor (duplicate önlemek için)
+      
+      // **DÜZELTME**: Kullanıcı soru modunda da flag'i sıfırla
+      shouldAskNewQuestionRef.current = false;
     }
     
     // Cleanup function
@@ -497,39 +715,65 @@ function App() {
         clearTimeout(delayTimeoutRef.current);
       }
     };
-  }, [buddyResponse, camera]); // camera dependency'sini ekledim
+  }, [buddyResponse, camera, isUserQuestionMode, buddyCyclePaused]); // camera dependency'sini ekledim
 
   // Mikrofon kaydı başlatma
   const startRecording = async () => {
+    // **YENİ**: Mikrofon activity'sini güncelle
+    setLastMicrophoneActivity(Date.now());
+    console.log("🎤 Mikrofon activity güncellendi (startRecording)");
+    
+    // **DÜZELTME**: Mikrofon kullanırken yeni soru gelmesin diye flag'i sıfırla
+    shouldAskNewQuestionRef.current = false;
+    
+    // **DÜZELTME**: Eski buddy response'u temizle ki aynı soru tekrar okunmasın
+    setBuddyResponse(null);
+    setShowBuddyQuestion(false);
+    
     try {
+      console.log("🎧 Mikrofon izni isteniyor (startRecording)...");
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      setIsRecording(true);
+      console.log("✅ Mikrofon izni alındı (startRecording), MediaRecorder hazırlanıyor...");
       
       const mediaRecorder = new MediaRecorder(stream);
       const audioChunks: Blob[] = [];
       
       mediaRecorder.ondataavailable = (event) => {
+        console.log("📊 Audio data alındı (startRecording):", event.data.size, "bytes");
         audioChunks.push(event.data);
       };
       
       mediaRecorder.onstop = async () => {
+        console.log("🛑 MediaRecorder durduruldu (startRecording)");
         const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+        console.log("🎵 Audio blob oluşturuldu (startRecording):", audioBlob.size, "bytes");
         await processAudioResponse(audioBlob);
         stream.getTracks().forEach(track => track.stop());
       };
       
-      mediaRecorder.start();
+      mediaRecorder.onerror = (event) => {
+        console.error("❌ MediaRecorder hatası (startRecording):", event);
+        setIsRecording(false);
+        stream.getTracks().forEach(track => track.stop());
+      };
+      
+      // **DÜZELTME**: MediaRecorder başlatıldıktan SONRA UI state'i güncelle
+      // timeslice ile düzenli data gönderimi (1 saniyede bir)
+      mediaRecorder.start(1000);
+      console.log("🔴 Kayıt başladı (startRecording, timeslice: 1000ms)");
+      setIsRecording(true); // ⚡ Sadece kayıt gerçekten başladıktan sonra
       
       // 5 saniye sonra kaydı durdur
       setTimeout(() => {
         if (mediaRecorder.state === 'recording') {
+          console.log("⏰ 5 saniye tamamlandı, kayıt durduruluyor");
           mediaRecorder.stop();
           setIsRecording(false);
         }
       }, 5000);
       
     } catch (error) {
-      console.error('Mikrofon erişimi hatası:', error);
+      console.error('❌ Mikrofon erişimi hatası (startRecording):', error);
       setIsRecording(false);
     }
   };
@@ -571,6 +815,9 @@ function App() {
       setUserResponseText(userText);
       setShowUserResponse(true);
 
+      // **YENİ**: Kullanıcı yanıtını chat'e ekle
+      addChatMessage('user', userText);
+
       // Konuşma geçmişini güncelle - kullanıcı yanıtını ekle
       const newHistory = [...conversationHistory];
       if (buddyResponse) {
@@ -590,13 +837,25 @@ function App() {
 
       console.log("📝 Güncellenmiş conversation history:", newHistory);
 
-      // Gemini'ya konuşma geçmişini gönder
+      // **DÜZELTME**: Ders materyali ile birlikte konuşma geçmişini gönder
+      let enhancedPrompt = CONVERSATION_PROMPT;
+      
+      // Ders materyali bilgisini ekle
+      if (questionsJson && questionsJson.questions) {
+        enhancedPrompt += `\n\nDERS MATERYALİ SORULARI:\n`;
+        questionsJson.questions.forEach((q, index) => {
+          enhancedPrompt += `Soru ${q.question_number}: ${q.question_text}\n`;
+        });
+      }
+      
+      enhancedPrompt += "\n\nCONVERSATION HISTORY:\n" + newHistory.map(entry => 
+        `AI: "${entry.AI}"\nUSER: "${entry.USER}"`
+      ).join('\n\n') + "\n\nYOUR TASK: Based on the last USER message, generate your next response in the required JSON format. Use the course material questions as context when discussing topics.";
+
       const conversationBody = JSON.stringify({
         contents: [
           { role: "user", parts: [
-            { text: CONVERSATION_PROMPT + "\n\nCONVERSATION HISTORY:\n" + newHistory.map(entry => 
-              `AI: "${entry.AI}"\nUSER: "${entry.USER}"`
-            ).join('\n\n') + "\n\nYOUR TASK: Based on the last USER message, generate your next response in the required JSON format." }
+            { text: enhancedPrompt }
           ]}
         ]
       });
@@ -648,6 +907,14 @@ function App() {
           console.log("📢 AI yanıtı ekranda gösteriliyor");
           setShowUserResponse(false);
           setShowBuddyQuestion(true);
+          
+          // **DÜZELTME**: Normal konuşmada da TTS'i hemen başlat
+          console.log("🚀 Normal konuşma AI yanıtı geldi, TTS hemen başlatılıyor:", parsed!.ai_response_text);
+          playTTSImmediately(parsed!.ai_response_text);
+          
+          // **YENİ**: AI yanıtını chat'e ekle
+          addChatMessage('ai', parsed!.ai_response_text);
+          
           setBuddyResponse({
             delay_seconds: 0,
             target_question_number: "devam",
@@ -660,12 +927,30 @@ function App() {
             // Konuşmayı özetle
             summarizeConversation(updatedHistory);
             
+            // **DÜZELTME**: Konuşma bitiminde daha uzun süre bekle (metin uzunluğuna göre)
+            let finalDisplayDuration = Math.max(8000, parsed!.ai_response_text.length * 80); // Minimum 8 saniye
+            console.log(`📱 Final AI yanıtı ${finalDisplayDuration/1000} saniye ekranda kalacak`);
+            
             setTimeout(() => {
               console.log("🔚 Soru baloncuğu kapatılıyor, normal moda dönülüyor");
               setShowBuddyQuestion(false);
               setHeadTurn(0); // Başı düz tut
               shouldAskNewQuestionRef.current = true; // Flag'i set et
-            }, 3000); // 3 saniye sonra soru baloncuğunu kapat
+              
+              // **DÜZELTME**: Normal conversation bitiminde backup buddy cycle tetikleyicisi
+              setTimeout(() => {
+                console.log("🔄 Normal conversation backup cycle tetikleniyor...");
+                if (!showBuddyQuestion && !isRecording && !isProcessingResponse && 
+                    !isUserQuestionMode && !buddyCyclePaused && 
+                    shouldAskNewQuestionRef.current === true) { // **YENİ**: Flag kontrolü eklendi
+                  console.log("✅ Backup cycle koşulları sağlandı, yeni soru soruluyor");
+                  shouldAskNewQuestionRef.current = false; // Flag'i kullan ve sıfırla
+                  runBuddyPrompt();
+                } else {
+                  console.log("❌ Backup cycle koşulları sağlanmadı, shouldAskNewQuestionRef:", shouldAskNewQuestionRef.current);
+                }
+              }, 15000); // **DÜZELTME**: 5 saniye yerine 15 saniye bekle
+            }, finalDisplayDuration); // Dinamik süre - minimum 8 saniye
           }
         }, 3000);
       } else {
@@ -674,11 +959,42 @@ function App() {
         setTimeout(() => {
           setShowUserResponse(false);
           setShowBuddyQuestion(true);
+          
+          // **DÜZELTME**: Parse hatası durumunda da TTS'i hemen başlat
+          const errorMessage = "Anlayamadım, tekrar söyler misin?";
+          console.log("🚀 Parse hatası mesajı, TTS hemen başlatılıyor:", errorMessage);
+          playTTSImmediately(errorMessage);
+          
+          // **YENİ**: Parse hatası mesajını chat'e ekle (duplicate kontrolü ile)
+          addChatMessage('ai', errorMessage);
+          
           setBuddyResponse({
             delay_seconds: 0,
             target_question_number: "devam",
-            ai_question: "Anlayamadım, tekrar söyler misin?"
+            ai_question: errorMessage
           });
+          
+          // **DÜZELTME**: Parse hatası durumunda da daha uzun süre göster
+          setTimeout(() => {
+            console.log("🔚 Parse hatası yanıtı kapatılıyor");
+            setShowBuddyQuestion(false);
+            setHeadTurn(0);
+            shouldAskNewQuestionRef.current = true;
+            
+            // **DÜZELTME**: Parse hatası bitiminde backup buddy cycle tetikleyicisi
+            setTimeout(() => {
+              console.log("🔄 Parse hatası backup cycle tetikleniyor...");
+              if (!showBuddyQuestion && !isRecording && !isProcessingResponse && 
+                  !isUserQuestionMode && !buddyCyclePaused && 
+                  shouldAskNewQuestionRef.current === true) { // **YENİ**: Flag kontrolü eklendi
+                console.log("✅ Parse hatası backup cycle koşulları sağlandı, yeni soru soruluyor");
+                shouldAskNewQuestionRef.current = false; // Flag'i kullan ve sıfırla
+                runBuddyPrompt();
+              } else {
+                console.log("❌ Parse hatası backup cycle koşulları sağlanmadı, shouldAskNewQuestionRef:", shouldAskNewQuestionRef.current);
+              }
+            }, 15000); // **DÜZELTME**: 5 saniye yerine 15 saniye bekle
+          }, 6000); // 6 saniye göster
         }, 3000);
       }
 
@@ -691,69 +1007,22 @@ function App() {
     }
   };
 
-  // Buddy response değiştiğinde sesi hazırla
+  // **DÜZELTME**: Normal buddy soruları için TTS (sadece delay ile gelen sorular)
   React.useEffect(() => {
-    let cancelled = false;
-    async function fetchTTS() {
-      if (buddyResponse && buddyResponse.ai_question) {
-        // Türkçe kontrolü
-        if (/[çğıöşüÇĞİÖŞÜ]/.test(buddyResponse.ai_question) || buddyResponse.ai_question.toLowerCase().includes(" mi") || buddyResponse.ai_question.toLowerCase().includes(" ne")) {
-          const apiKey = import.meta.env.VITE_ELEVEN_LABS_API_KEY;
-          if (!apiKey) {
-            console.error("ElevenLabs API anahtarı bulunamadı!");
-            setBuddyAudio(null);
-            return;
-          }
-          const voiceId = "ErXwobaYiN019PkySvjV";
-          const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
-          const body = JSON.stringify({
-            text: buddyResponse.ai_question,
-            model_id: "eleven_multilingual_v2",
-            voice_settings: {
-              stability: 0.5,
-              similarity_boost: 0.8
-            }
-          });
-          try {
-            const response = await fetch(url, {
-              method: "POST",
-              headers: {
-                "xi-api-key": apiKey,
-                "Content-Type": "application/json",
-                "Accept": "audio/mpeg"
-              },
-              body
-            });
-            if (!response.ok) {
-              throw new Error("TTS API hatası: " + response.status);
-            }
-            const arrayBuffer = await response.arrayBuffer();
-            if (cancelled) return;
-            const blob = new Blob([arrayBuffer], { type: "audio/mpeg" });
-            const audioUrl = URL.createObjectURL(blob);
-            const audio = new Audio(audioUrl);
-            setBuddyAudio(audio);
-          } catch (err) {
-            console.error("TTS oynatma hatası:", err);
-            setBuddyAudio(null);
-          }
-        } else {
-          setBuddyAudio(null);
-        }
-      } else {
-        setBuddyAudio(null);
-      }
+    // Sadece normal buddy cycle'dan gelen sorular için (kullanıcı sorusu yanıtları değil)
+    if (buddyResponse && buddyResponse.ai_question && 
+        buddyResponse.target_question_number !== "kullanici_sorusu" && 
+        buddyResponse.target_question_number !== "devam" &&
+        showBuddyQuestion) {
+      
+      console.log("🎵 Normal buddy sorusu için TTS anında başlatılıyor:", buddyResponse.ai_question.substring(0, 50) + "...");
+      playTTSImmediately(buddyResponse.ai_question);
+      
+      // **NOT**: Chat'e ekleme delay effect'inde yapılıyor, duplicate önlemek için burada kaldırıldı
     }
-    fetchTTS();
-    return () => { cancelled = true; };
-  }, [buddyResponse]);
+  }, [buddyResponse, showBuddyQuestion, addChatMessage]);
 
-  // Delay bittiğinde sesi oynat
-  React.useEffect(() => {
-    if (showBuddyQuestion && buddyAudio) {
-      buddyAudio.play();
-    }
-  }, [showBuddyQuestion, buddyAudio]);
+  // **KALDIRILD**: Eski TTS oynatma sistemi - artık anında başlatıldığı için gerek yok
 
   // Sahne geçiş animasyonu için state
   const [sceneOpacity, setSceneOpacity] = React.useState(0);
@@ -777,43 +1046,92 @@ function App() {
   const [userAnswerMode, setUserAnswerMode] = React.useState(false);
   const userMediaRecorderRef = React.useRef<MediaRecorder | null>(null);
   const userStreamRef = React.useRef<MediaStream | null>(null);
-  let userAudioChunks: Blob[] = [];
+  // **DÜZELTME**: userAudioChunks'ı ref olarak yönet (scope problemi önlenir)
+  const userAudioChunksRef = React.useRef<Blob[]>([]);
 
   // Mikrofonu başlat
   const startUserRecording = async () => {
+    // **YENİ**: Mikrofon activity'sini güncelle
+    setLastMicrophoneActivity(Date.now());
+    console.log("🎤 Mikrofon activity güncellendi");
+    
+    // **DÜZELTME**: Kullanıcı mikrofon kullanırken yeni soru gelmesin diye flag'i sıfırla
+    shouldAskNewQuestionRef.current = false;
+    
+    // **YENİ**: Kullanıcı soru modunu başlat ve normal buddy cycle'ı durdur
+    console.log("🎤 Kullanıcı soru modu başlıyor, normal cycle durduruluyor");
+    setIsUserQuestionMode(true);
+    setBuddyCyclePaused(true);
+    
+    // Mevcut delay'leri temizle
     if (delayTimeoutRef.current) clearTimeout(delayTimeoutRef.current);
+    
+    // **DÜZELTME**: Eski buddy response'u temizle ki aynı soru tekrar okunmasın
+    setBuddyResponse(null);
+    
+    // UI state'lerini sıfırla (recording state HARİÇ - o MediaRecorder hazır olunca set edilecek)
     setShowBuddyQuestion(false);
     setIsProcessingResponse(false);
     setUserRecordingCancelled(false);
-    setUserRecording(true);
     setHeadTurn(0); // Kullanıcıya dön
+    
+    // **DÜZELTME**: Audio chunks'ı temizle
+    userAudioChunksRef.current = [];
+    
     try {
+      console.log("🎧 Mikrofon izni isteniyor...");
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log("✅ Mikrofon izni alındı, MediaRecorder hazırlanıyor...");
+      
       userStreamRef.current = stream;
       const mediaRecorder = new MediaRecorder(stream);
       userMediaRecorderRef.current = mediaRecorder;
-      userAudioChunks = [];
+      
+      // **DÜZELTME**: Event listener'ları hazırla
       mediaRecorder.ondataavailable = (event) => {
-        userAudioChunks.push(event.data);
+        console.log("📊 Audio data alındı:", event.data.size, "bytes");
+        userAudioChunksRef.current.push(event.data);
       };
+      
       mediaRecorder.onstop = async () => {
+        console.log("🛑 MediaRecorder durduruldu");
         if (userRecordingCancelled) {
+          console.log("❌ Kayıt iptal edildi, cleanup yapılıyor");
           setUserRecording(false);
           userStreamRef.current?.getTracks().forEach(track => track.stop());
           return;
         }
-        const audioBlob = new Blob(userAudioChunks, { type: 'audio/wav' });
+        const audioBlob = new Blob(userAudioChunksRef.current, { type: 'audio/wav' });
+        console.log("🎵 Audio blob oluşturuldu:", audioBlob.size, "bytes");
         await processUserQuestionAudio(audioBlob);
         setUserRecording(false);
         userStreamRef.current?.getTracks().forEach(track => track.stop());
         setHeadTurn(getHeadTurnForCamera(camera)); // Kayıt bitince tekrar pozisyona dön
       };
-      mediaRecorder.start();
+      
+      mediaRecorder.onerror = (event) => {
+        console.error("❌ MediaRecorder hatası:", event);
+        setUserRecording(false);
+        setUserRecordingCancelled(false);
+        userStreamRef.current?.getTracks().forEach(track => track.stop());
+      };
+      
+      // **DÜZELTME**: MediaRecorder başlatıldıktan SONRA UI state'i güncelle
+      // timeslice ile düzenli data gönderimi (1 saniyede bir)
+      mediaRecorder.start(1000);
+      console.log("🔴 Kayıt başladı (timeslice: 1000ms)");
+      setUserRecording(true); // ⚡ Sadece kayıt gerçekten başladıktan sonra
+      
     } catch (error) {
+      console.error('❌ Mikrofon erişimi hatası:', error);
+      // **DÜZELTME**: Hata durumunda state'leri temizle
       setUserRecording(false);
       setUserRecordingCancelled(false);
-      userStreamRef.current?.getTracks().forEach(track => track.stop());
-      console.error('Mikrofon erişimi hatası:', error);
+      setIsUserQuestionMode(false);
+      setBuddyCyclePaused(false);
+      if (userStreamRef.current) {
+        userStreamRef.current.getTracks().forEach(track => track.stop());
+      }
     }
   };
 
@@ -826,6 +1144,7 @@ function App() {
 
   // Kayıt iptal
   const cancelUserRecording = () => {
+    console.log("❌ Kullanıcı kaydı iptal edildi, normal moda dönülüyor");
     setUserRecordingCancelled(true);
     if (userMediaRecorderRef.current && userMediaRecorderRef.current.state === 'recording') {
       userMediaRecorderRef.current.stop();
@@ -833,10 +1152,19 @@ function App() {
     setUserRecording(false);
     setShowUserResponse(false);
     setHeadTurn(getHeadTurnForCamera(camera)); // İptal edilirse tekrar pozisyona dön
+    
+    // **DÜZELTME**: Eski buddy response'u temizle ki aynı soru tekrar okunmasın
+    setBuddyResponse(null);
+    
+    // **YENİ**: İptal edildiğinde normal moda dön
+    setIsUserQuestionMode(false);
+    setUserAnswerMode(false);
+    setBuddyCyclePaused(false);
   };
 
   // Kullanıcı sorusu için özel prompt ile AI'ya istek at
   const processUserQuestionAudio = async (audioBlob: Blob) => {
+    console.log("🔄 Kullanıcı sorusu işleniyor...");
     setIsProcessingResponse(true);
     setUserAnswerMode(true); // Kullanıcıya özel cevap bekleniyor
     setHeadTurn(0); // Cevap gelirken kullanıcıya dön
@@ -867,11 +1195,63 @@ function App() {
       const userText = transcriptionData?.candidates?.[0]?.content?.parts?.[0]?.text || "Ses anlaşılamadı";
       setUserResponseText(userText);
       setShowUserResponse(true);
-      // KULLANICI_SORUSU promptu ile AI'ya gönder
-      const userPrompt = `KULLANICI_SORUSU: Kullanıcıdan gelen sesli soru: "${userText}". Lütfen bu soruya uygun şekilde, kısa ve net bir yanıt ver.`;
+
+      // **YENİ**: Kullanıcı sorusunu chat'e ekle
+      addChatMessage('user', userText);
+
+      // **DÜZELTME**: Kullanıcı soru modunda da conversation history'yi güncelle
+      // Eğer önceki buddy sorusu varsa ve bu bir normal cevap değilse, yeni bir diyalog başlat
+      const newHistory = [...conversationHistory];
+      if (buddyResponse && buddyResponse.ai_question && buddyResponse.target_question_number !== "kullanici_sorusu") {
+        // Bu bir buddy sorusuna cevap değil, kullanıcının kendi sorusu
+        newHistory.push({
+          AI: "", // AI henüz cevap vermedi
+          USER: userText
+        });
+      }
+      setConversationHistory(newHistory);
+      console.log("🔄 Kullanıcı sorusu için conversation history güncellendi:", newHistory);
+      // **DÜZELTME**: Kapsamlı prompt ile ders materyali ve konuşma bağlamını dahil et
+      let contextualPrompt = `Sen bir AI Study Buddy'sin. Bir öğrenci gibi davranıyorsun - samimi, arkadaşça ve yardımsever.
+
+DERS MATERYALİ:`;
+
+      // Ders materyali sorularını ekle
+      if (questionsJson && questionsJson.questions) {
+        contextualPrompt += `\nElinde şu sorular var:\n`;
+        questionsJson.questions.forEach((q, index) => {
+          contextualPrompt += `${index + 1}. Soru ${q.question_number}: ${q.question_text}\n`;
+        });
+      }
+
+      // Şu anki buddy sorusunu ekle
+      if (buddyResponse && buddyResponse.ai_question && buddyResponse.target_question_number !== "kullanici_sorusu") {
+        contextualPrompt += `\nSEN AZ ÖNCE ŞUNU SORMUŞTUN: "${buddyResponse.ai_question}"`;
+        if (buddyResponse.target_question_number) {
+          contextualPrompt += ` (${buddyResponse.target_question_number}. soru hakkında)`;
+        }
+      }
+
+      // Konuşma geçmişini ekle
+      if (conversationHistory.length > 0) {
+        contextualPrompt += `\n\nÖNCEKİ KONUŞMA GEÇMİŞİ:\n`;
+        conversationHistory.forEach((entry, index) => {
+          contextualPrompt += `${index + 1}. Sen: "${entry.AI}"\n`;
+          if (entry.USER) {
+            contextualPrompt += `   Kullanıcı: "${entry.USER}"\n`;
+          }
+        });
+      }
+
+      contextualPrompt += `\n\nŞİMDİ KULLANICI SANA ŞUNU SÖYLÜYOR: "${userText}"
+
+Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğrenci gibi yanıt ver. Eğer kendi sorduğun soruyla ilgiliyse o bağlamda cevapla. Kısa ve net ol.`;
+
+      console.log("🎯 Contextualized prompt:", contextualPrompt);
+
       const conversationBody = JSON.stringify({
         contents: [
-          { role: "user", parts: [ { text: userPrompt } ] }
+          { role: "user", parts: [ { text: contextualPrompt } ] }
         ]
       });
       const conversationResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey, {
@@ -881,6 +1261,14 @@ function App() {
       });
       const conversationData = await conversationResponse.json();
       const result = conversationData?.candidates?.[0]?.content?.parts?.[0]?.text || "Yanıt alınamadı.";
+      
+      // **DÜZELTME**: TTS'i paralel olarak hemen başlat (gecikme olmadan)
+      console.log("🚀 AI yanıtı geldi, TTS hemen başlatılıyor:", result);
+      playTTSImmediately(result);
+      
+      // **YENİ**: AI yanıtını chat'e ekle (kullanıcı sorusu yanıtı)
+      addChatMessage('ai', result);
+      
       setBuddyResponse({
         delay_seconds: 0,
         target_question_number: "kullanici_sorusu",
@@ -888,23 +1276,108 @@ function App() {
       });
       setShowBuddyQuestion(true);
       setIsProcessingResponse(false);
+      
+      // **DÜZELTME**: AI cevabını conversation history'ye ekle
+      const updatedHistory = [...conversationHistory];
+      if (updatedHistory.length > 0 && updatedHistory[updatedHistory.length - 1].AI === "") {
+        updatedHistory[updatedHistory.length - 1].AI = result;
+      } else {
+        updatedHistory.push({
+          AI: result,
+          USER: ""
+        });
+      }
+      setConversationHistory(updatedHistory);
+      console.log("✅ AI cevabı conversation history'ye eklendi:", updatedHistory);
+      
+      // **DÜZELTME**: Sesli okuma için TTS tetikleme
+      console.log("🔊 Kullanıcı sorusu yanıtı için TTS tetikleniyor:", result);
+      
+      // **YENİ**: Kullanıcı sorusu cevaplandıktan sonra daha uzun süre bekleyip normal moda dön
+      // Ses çalma süresini hesaba katarak en az 12 saniye göster
+      let displayDuration = Math.max(12000, result.length * 100); // Minimum 12 saniye veya metin uzunluğuna göre
+      console.log(`📱 AI yanıtı ${displayDuration/1000} saniye ekranda kalacak`);
+      
+      setTimeout(() => {
+        console.log("✅ Kullanıcı sorusu tamamlandı, normal moda dönülüyor");
+        setIsUserQuestionMode(false);
+        setUserAnswerMode(false);
+        setShowBuddyQuestion(false);
+        setShowUserResponse(false);
+        
+        // **DÜZELTME**: Kullanıcı sorusu buddyResponse'unu temizle
+        setBuddyResponse(null);
+        
+        // Normal buddy cycle'ı yeniden başlat (delay ile)
+        setTimeout(() => {
+          setBuddyCyclePaused(false);
+          shouldAskNewQuestionRef.current = true;
+          console.log("🔄 Normal buddy cycle yeniden başlatılıyor...");
+        }, 3000); // 3 saniye sonra normal cycle'a dön
+      }, displayDuration); // Dinamik süre - minimum 12 saniye
+      
     } catch (err) {
       setIsProcessingResponse(false);
       setShowBuddyQuestion(false);
       setUserAnswerMode(false);
+      setIsUserQuestionMode(false);
+      setBuddyCyclePaused(false);
+      // **DÜZELTME**: Hata durumunda da buddy response'u temizle
+      setBuddyResponse(null);
       console.error("Kullanıcı sorusu işlenirken hata:", err);
     }
   };
 
   // Buddy cevabı gösterildikten sonra userAnswerMode'u sıfırla
   React.useEffect(() => {
-    if (showBuddyQuestion && !isProcessingResponse && userAnswerMode) {
+    if (showBuddyQuestion && !isProcessingResponse && userAnswerMode && isUserQuestionMode) {
       setHeadTurn(0); // Cevap gösterilirken kullanıcıya dön
-      // 2 saniye sonra tekrar normal moda dön
-      const t = setTimeout(() => setUserAnswerMode(false), 2000);
-      return () => clearTimeout(t);
+      // Bu kontrol artık processUserQuestionAudio'da yapılıyor, burada sadece kafa dönme
     }
-  }, [showBuddyQuestion, isProcessingResponse]);
+  }, [showBuddyQuestion, isProcessingResponse, userAnswerMode, isUserQuestionMode]);
+
+  // **YENİ**: Inactivity timer - 1 dakika mikrofon kullanılmazsa soru sor
+  React.useEffect(() => {
+    const startInactivityTimer = () => {
+      if (inactivityTimerRef.current) {
+        clearInterval(inactivityTimerRef.current);
+      }
+      
+      inactivityTimerRef.current = setInterval(() => {
+        const timeSinceLastActivity = Date.now() - lastMicrophoneActivity;
+        const oneMinute = 60 * 1000; // 60 saniye
+        
+        console.log(`⏰ Inactivity check: ${Math.round(timeSinceLastActivity/1000)}s geçti`);
+        
+        // 1 dakika geçti ve AI buddy soru sormuyorsa yeni soru sor
+        if (timeSinceLastActivity >= oneMinute && 
+            !showBuddyQuestion && 
+            !isRecording && 
+            !userRecording && 
+            !isProcessingResponse && 
+            !isUserQuestionMode && 
+            !buddyCyclePaused &&
+            questionsJson && questionsJson.questions) {
+          
+          console.log("🔔 1 dakika geçti, AI buddy yeni soru soracak");
+          shouldAskNewQuestionRef.current = false; // Inactivity timer da flag'i sıfırlasın
+          runBuddyPrompt();
+          setLastMicrophoneActivity(Date.now()); // Timer'ı sıfırla
+        }
+      }, 10000); // Her 10 saniyede kontrol et
+    };
+
+    // Sadece session active olduğunda timer başlat
+    if (sessionStarted && sceneReady && questionsJson) {
+      startInactivityTimer();
+    }
+
+    return () => {
+      if (inactivityTimerRef.current) {
+        clearInterval(inactivityTimerRef.current);
+      }
+    };
+  }, [sessionStarted, sceneReady, questionsJson, lastMicrophoneActivity, showBuddyQuestion, isRecording, userRecording, isProcessingResponse, isUserQuestionMode, buddyCyclePaused, runBuddyPrompt]);
 
   if (!sessionStarted && !showPositionSelector) {
     return <Lobby handleSessionStart={handleSessionStart} />;
@@ -954,21 +1427,47 @@ function App() {
             onMouseLeave={handleMouseLeave}
             onClick={handleDeskClick}
           >
-            <img
-              src="/assets/lobby_desk.png"
-              alt="Masa"
-              style={{ 
-                maxWidth: '140%', 
-                maxHeight: '140%', 
-                width: 'auto', 
-                height: 'auto',
-                display: 'block', 
-                userSelect: 'none', 
-                pointerEvents: 'none',
-                objectFit: 'contain'
-              }}
-              draggable={false}
-            />
+            <div style={{
+              position: 'relative',
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: '#2d2d5f'
+            }}>
+              <img
+                src="/assets/lobby_desk.png"
+                alt="Masa"
+                style={{ 
+                  width: '100%', 
+                  height: '100%',
+                  display: 'block', 
+                  userSelect: 'none', 
+                  pointerEvents: 'none',
+                  objectFit: 'cover'
+                }}
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                  if (fallback) fallback.style.display = 'flex';
+                }}
+                draggable={false}
+              />
+              <div style={{
+                display: 'none',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '100%',
+                height: '100%',
+                fontSize: '48px',
+                color: '#a78bfa'
+              }}>
+                <div style={{ fontSize: '48px', marginBottom: '8px' }}>🪑</div>
+                <div style={{ fontSize: '16px', fontWeight: 'bold' }}>Çalışma Masası</div>
+              </div>
+            </div>
             {/* Overlay alanlar */}
             {['left', 'center', 'right'].map((area) => (
               <div
@@ -1074,54 +1573,199 @@ function App() {
 
   return (
     <>
-      {showBuddyQuestion && buddyResponse && (
+      {/* **YENİ**: Chat Panel */}
+      <div style={{
+        position: "fixed",
+        top: 0,
+        left: isChatPanelOpen ? 0 : -400,
+        width: 400,
+        height: "100vh",
+        background: "rgba(35, 35, 74, 0.95)",
+        backdropFilter: "blur(10px)",
+        borderRight: "1px solid rgba(124, 58, 237, 0.3)",
+        zIndex: 2000,
+        transition: "left 0.3s ease-in-out",
+        display: "flex",
+        flexDirection: "column"
+      }}>
+        {/* Chat Panel Header */}
         <div style={{
-          position: "absolute", top: 0, left: 0, width: "100vw", zIndex: 1000, display: "flex", justifyContent: "center", marginTop: 32
+          background: "rgba(124, 58, 237, 0.8)",
+          color: "#fff",
+          padding: "16px 20px",
+          fontSize: 18,
+          fontWeight: 600,
+          borderBottom: "1px solid rgba(255,255,255,0.1)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between"
         }}>
-          <div style={{
-            background: "#23234a",
-            color: "#fff",
-            borderRadius: 16,
-            padding: "18px 32px",
-            fontSize: 20,
-            fontWeight: 600,
-            boxShadow: "0 4px 24px rgba(124,58,237,0.10)",
-            maxWidth: 600
-          }}>
-            <div style={{ marginBottom: 8, color: "#a78bfa", fontSize: 15, fontWeight: 500 }}>
-              AI Buddy'nin sorusu:
-            </div>
-            <div>{buddyResponse.ai_question}</div>
-          </div>
+          <span>💬 Sohbet Geçmişi</span>
+          <button
+            onClick={() => setIsChatPanelOpen(false)}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#fff",
+              fontSize: 20,
+              cursor: "pointer",
+              padding: "4px 8px"
+            }}
+          >
+            ×
+          </button>
         </div>
-      )}
 
-      {showUserResponse && (
+        {/* Chat Messages Area */}
         <div style={{
-          position: "absolute", bottom: 120, left: 0, width: "100vw", zIndex: 1000, display: "flex", justifyContent: "center"
+          flex: 1,
+          overflowY: "auto",
+          padding: "16px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "12px",
+          fontSize: 14
         }}>
-          <div style={{
-            background: "#1e3a8a",
-            color: "#fff",
-            borderRadius: 16,
-            padding: "18px 32px",
-            fontSize: 18,
-            fontWeight: 500,
-            boxShadow: "0 4px 24px rgba(30,58,138,0.15)",
-            maxWidth: 500
-          }}>
-            <div style={{ marginBottom: 8, color: "#93c5fd", fontSize: 14, fontWeight: 500 }}>
-              Senin yanıtın:
+          {chatMessages.length === 0 ? (
+            <div style={{
+              color: "#a78bfa",
+              textAlign: "center",
+              marginTop: "50%",
+              fontStyle: "italic"
+            }}>
+              Henüz konuşma yok...
             </div>
-            <div>{userResponseText}</div>
-            {isProcessingResponse && (
-              <div style={{ marginTop: 12, fontSize: 14, color: "#93c5fd" }}>
-                AI Buddy düşünüyor...
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+          ) : (
+            chatMessages.map((message) => (
+              <div
+                key={message.id}
+                style={{
+                  alignSelf: message.type === 'user' ? 'flex-end' : 'flex-start',
+                  maxWidth: '80%'
+                }}
+              >
+                <div style={{
+                  background: message.type === 'user' 
+                    ? "linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)"
+                    : "linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)",
+                  color: "#fff",
+                  padding: "10px 14px",
+                  borderRadius: 16,
+                  fontSize: 13,
+                  lineHeight: 1.4,
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.15)"
+                }}>
+                  <div style={{ 
+                    fontSize: 11, 
+                    opacity: 0.8, 
+                    marginBottom: 4,
+                    fontWeight: 600
+                  }}>
+                    {message.type === 'user' ? '👤 Sen' : '🤖 AI Buddy'}
+                  </div>
+                  <div>{message.text}</div>
+                  <div style={{ 
+                    fontSize: 10, 
+                    opacity: 0.6, 
+                    marginTop: 4,
+                    textAlign: 'right'
+                  }}>
+                    {new Date(message.timestamp).toLocaleTimeString('tr-TR', {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </div>
+                </div>
+                             </div>
+             ))
+           )}
+                      {/* **YENİ**: Gerçek zamanlı durum göstergesi */}
+           {(isRecording || userRecording || isProcessingResponse) && (
+             <div style={{
+               background: "rgba(0,0,0,0.3)",
+               margin: "8px 16px",
+               padding: "8px 12px",
+               borderRadius: 12,
+               fontSize: 12,
+               color: "#fff",
+               display: "flex",
+               alignItems: "center",
+               gap: "8px",
+               border: "1px solid rgba(124,58,237,0.3)"
+             }}>
+               <div style={{
+                 width: 8,
+                 height: 8,
+                 borderRadius: "50%",
+                 background: isRecording || userRecording ? "#ef4444" : "#10b981",
+                 animation: "pulse 1s infinite"
+               }} />
+               <span>
+                 {(isRecording || userRecording) && "🎤 Kayıt yapılıyor..."}
+                 {isProcessingResponse && !(isRecording || userRecording) && "🤖 AI düşünüyor..."}
+               </span>
+             </div>
+           )}
+
+           {/* **YENİ**: Auto-scroll için referans elementi */}
+           <div ref={chatMessagesEndRef} />
+         </div>
+
+         {/* Chat Panel Footer */}
+         <div style={{
+           background: "rgba(0,0,0,0.2)",
+           padding: "12px 16px",
+           borderTop: "1px solid rgba(255,255,255,0.1)",
+           fontSize: 12,
+           color: "#a78bfa",
+           textAlign: "center"
+         }}>
+                    Mikrofon kullanarak AI Buddy ile konuşabilirsin
+         </div>
+       </div>
+
+       {/* **YENİ**: CSS animasyonları */}
+       <style>{`
+         @keyframes pulse {
+           0% { opacity: 1; }
+           50% { opacity: 0.5; }
+           100% { opacity: 1; }
+         }
+       `}</style>
+
+      {/* **YENİ**: Chat Panel Toggle Button */}
+      <button
+        onClick={() => setIsChatPanelOpen(!isChatPanelOpen)}
+        style={{
+          position: "fixed",
+          top: 20,
+          left: isChatPanelOpen ? 420 : 20,
+          width: 50,
+          height: 50,
+          borderRadius: "50%",
+          border: "none",
+          background: "linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)",
+          color: "#fff",
+          fontSize: 20,
+          cursor: "pointer",
+          boxShadow: "0 4px 20px rgba(124, 58, 237, 0.4)",
+          zIndex: 2100,
+          transition: "all 0.3s ease",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center"
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = "scale(1.1)";
+          e.currentTarget.style.boxShadow = "0 6px 24px rgba(124, 58, 237, 0.6)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = "scale(1)";
+          e.currentTarget.style.boxShadow = "0 4px 20px rgba(124, 58, 237, 0.4)";
+        }}
+      >
+        {isChatPanelOpen ? '←' : '💬'}
+      </button>
 
       {/* Mikrofon butonu */}
       {showBuddyQuestion && buddyResponse && !isRecording && !isProcessingResponse && (
@@ -1157,22 +1801,42 @@ function App() {
             e.currentTarget.style.boxShadow = "0 8px 32px rgba(102, 126, 234, 0.4)";
           }}
         >
-          <img 
-            src="/assets/microfon.png" 
-            alt="Mikrofon" 
-            style={{ 
-              width: 32, 
-              height: 32, 
-              filter: "brightness(0) invert(1)",
-              transition: "transform 0.2s ease"
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = "scale(1.1)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = "scale(1)";
-            }}
-          />
+          <div style={{
+            position: 'relative',
+            width: 32,
+            height: 32,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <img 
+              src="/assets/microfon.png" 
+              alt="Mikrofon" 
+              style={{ 
+                width: 32, 
+                height: 32, 
+                // filter: "brightness(0) saturate(0) invert(1)", // Test için kaldırıldı
+                transition: "transform 0.2s ease"
+              }}
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+                const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                if (fallback) fallback.style.display = 'block';
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "scale(1.1)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "scale(1)";
+              }}
+            />
+            <span style={{
+              display: 'none',
+              fontSize: '24px',
+              color: '#fff',
+              userSelect: 'none'
+            }}>🎤</span>
+          </div>
         </button>
       )}
 
@@ -1273,16 +1937,36 @@ function App() {
             e.currentTarget.style.boxShadow = userRecording ? "0 8px 32px rgba(231, 76, 60, 0.4)" : "0 8px 32px rgba(102, 126, 234, 0.4)";
           }}
         >
-          <img 
-            src="/assets/microfon.png" 
-            alt="Mikrofon" 
-            style={{ 
-              width: 32, 
-              height: 32, 
-              filter: "brightness(0) invert(1)",
-              transition: "transform 0.2s ease"
-            }}
-          />
+          <div style={{
+            position: 'relative',
+            width: 32,
+            height: 32,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <img 
+              src="/assets/microfon.png" 
+              alt="Mikrofon" 
+              style={{ 
+                width: 32, 
+                height: 32, 
+                // filter: "brightness(0) saturate(0) invert(1)", // Test için kaldırıldı
+                transition: "transform 0.2s ease"
+              }}
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+                const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                if (fallback) fallback.style.display = 'block';
+              }}
+            />
+            <span style={{
+              display: 'none',
+              fontSize: '24px',
+              color: '#fff',
+              userSelect: 'none'
+            }}>🎤</span>
+          </div>
         </button>
       )}
       {userRecording && !isProcessingResponse && (
