@@ -22,4 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-public/assets/abandoned_room_interior_style_5.glb
+
+# Large assets (excluded due to size)
+public/assets/
