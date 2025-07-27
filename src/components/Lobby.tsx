@@ -6,13 +6,17 @@ import "./Lobby.css";
 // Ekstra className'ler ile spacing ve modern efektler için alan açıyorum
 
 type LobbyProps = {
-  handleSessionStart: (imageBase64: string) => void;
+  handleSessionStart: (imageBase64: string, studyDuration: number, breakDuration: number) => void;
 };
 
 export const Lobby: React.FC<LobbyProps> = ({ handleSessionStart }) => {
   const [topic, setTopic] = useState("");
   const [inputFocused, setInputFocused] = useState(false);
   const [materialImages, setMaterialImages] = useState<string[]>([]);
+  
+  // Pomodoro ayarları
+  const [studyDuration, setStudyDuration] = useState(25); // Dakika
+  const [breakDuration, setBreakDuration] = useState(5); // Dakika
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setTopic(e.target.value);
@@ -20,7 +24,7 @@ export const Lobby: React.FC<LobbyProps> = ({ handleSessionStart }) => {
 
   const handleClick = () => {
     if (materialImages.length > 0) {
-      handleSessionStart(materialImages[0]);
+      handleSessionStart(materialImages[0], studyDuration, breakDuration);
     }
   };
 
@@ -43,7 +47,11 @@ export const Lobby: React.FC<LobbyProps> = ({ handleSessionStart }) => {
   };
 
   return (
-    <div className="lobby-container poppins-font">
+    <div className="lobby-container poppins-font" style={{
+      height: '100vh',
+      overflowY: 'auto',
+      overflowX: 'hidden'
+    }}>
       <img
         src="/assets/character_smiling.png"
         alt="Karakter"
@@ -70,6 +78,96 @@ export const Lobby: React.FC<LobbyProps> = ({ handleSessionStart }) => {
         >
           Örn: Biyoloji - Hücreler
         </label>
+      </div>
+      
+      {/* Pomodoro Ayarları */}
+      <div style={{
+        display: 'flex',
+        gap: '20px',
+        marginTop: '20px',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexWrap: 'wrap'
+      }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <label style={{
+            color: '#7c3aed',
+            fontSize: '14px',
+            fontWeight: 600
+          }}>
+            🕒 Ders Süresi (dakika)
+          </label>
+          <input
+            type="number"
+            min="5"
+            max="180"
+            value={studyDuration}
+            onChange={(e) => setStudyDuration(parseInt(e.target.value) || 25)}
+            style={{
+              width: '80px',
+              padding: '8px 12px',
+              borderRadius: '12px',
+              border: '2px solid #e5e7eb',
+              textAlign: 'center',
+              fontSize: '16px',
+              fontWeight: 600,
+              outline: 'none',
+              transition: 'border-color 0.2s ease',
+              background: '#fff'
+            }}
+            onFocus={(e) => {
+              e.target.style.borderColor = '#7c3aed';
+            }}
+            onBlur={(e) => {
+              e.target.style.borderColor = '#e5e7eb';
+            }}
+          />
+        </div>
+        
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <label style={{
+            color: '#10b981',
+            fontSize: '14px',
+            fontWeight: 600
+          }}>
+            ☕ Mola Süresi (dakika)
+          </label>
+          <input
+            type="number"
+            min="1"
+            max="60"
+            value={breakDuration}
+            onChange={(e) => setBreakDuration(parseInt(e.target.value) || 5)}
+            style={{
+              width: '80px',
+              padding: '8px 12px',
+              borderRadius: '12px',
+              border: '2px solid #e5e7eb',
+              textAlign: 'center',
+              fontSize: '16px',
+              fontWeight: 600,
+              outline: 'none',
+              transition: 'border-color 0.2s ease',
+              background: '#fff'
+            }}
+            onFocus={(e) => {
+              e.target.style.borderColor = '#10b981';
+            }}
+            onBlur={(e) => {
+              e.target.style.borderColor = '#e5e7eb';
+            }}
+          />
+        </div>
       </div>
       <div className="lobby-upload-container">
         <label className="lobby-upload-label">

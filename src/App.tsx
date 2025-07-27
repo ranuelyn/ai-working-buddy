@@ -3,6 +3,9 @@ import { Canvas } from "@react-three/fiber";
 import { Experience } from "./components/Experience";
 import { Lobby } from "./components/Lobby";
 import { MusicPlayer } from "./components/MusicPlayer";
+import { PomodoroTimer } from "./components/PomodoroTimer";
+import { NotesArea } from "./components/NotesArea";
+import { BadgesArea } from "./components/BadgesArea";
 import './App.css';
 
 const CAMERA_PRESETS = {
@@ -247,12 +250,29 @@ function App() {
 
   // **YENİ**: Chat panel state'leri
   const [isChatPanelOpen, setIsChatPanelOpen] = React.useState(false);
+  const [activeTab, setActiveTab] = React.useState<'chat' | 'notes' | 'badges'>('chat');
   const [chatMessages, setChatMessages] = React.useState<Array<{
     id: string;
     type: 'user' | 'ai';
     text: string;
     timestamp: number;
   }>>([]);
+
+  // **YENİ**: Rozet sistemi state'leri
+  const [earnedBadges, setEarnedBadges] = React.useState(0);
+
+  // LocalStorage'dan rozet sayısını yükle
+  React.useEffect(() => {
+    const savedBadges = localStorage.getItem('ai-buddy-badges');
+    if (savedBadges) {
+      setEarnedBadges(parseInt(savedBadges));
+    }
+  }, []);
+
+  // Rozet sayısını localStorage'a kaydet
+  React.useEffect(() => {
+    localStorage.setItem('ai-buddy-badges', earnedBadges.toString());
+  }, [earnedBadges]);
 
   // Ses için state
   const [buddyAudio, setBuddyAudio] = React.useState<HTMLAudioElement | null>(null);
@@ -295,8 +315,8 @@ function App() {
     }
   }, [chatMessages]);
 
-  // **YENİ**: TTS'i anında başlatma fonksiyonu (gecikme olmadan)
-  const playTTSImmediately = async (text: string) => {
+  // **YENİ**: TTS'i anında başlatma fonksiyonu (gecikme olmadan) - Promise döndürür
+  const playTTSImmediately = async (text: string): Promise<void> => {
     console.log("🎵 TTS anında başlatılıyor:", text.substring(0, 50) + "...");
     
     // **DÜZELTME**: Emojileri ve özel karakterleri temizle
@@ -313,7 +333,7 @@ function App() {
 
     if (!cleanedText) {
       console.log("❌ Temizlik sonrası metin boş, TTS atlanıyor");
-      return;
+      return Promise.resolve();
     }
 
     console.log("🧹 Emoji temizliği tamamlandı:", cleanedText.substring(0, 50) + "...");
@@ -321,7 +341,7 @@ function App() {
     // Türkçe kontrolü
     if (!/[çğıöşüÇĞİÖŞÜ]/.test(cleanedText) && !cleanedText.toLowerCase().includes(" mi") && !cleanedText.toLowerCase().includes(" ne")) {
       console.log("❌ Türkçe metin değil, TTS atlanıyor");
-      return;
+      return Promise.resolve();
     }
 
     const apiKey = import.meta.env.VITE_ELEVEN_LABS_API_KEY;
@@ -329,17 +349,21 @@ function App() {
     if (!apiKey) {
       console.log("🔊 ElevenLabs API yok, Browser TTS anında başlatılıyor");
       // Browser TTS'i hemen başlat
-      try {
-        const utterance = new SpeechSynthesisUtterance(cleanedText);
-        utterance.lang = 'tr-TR';
-        utterance.rate = 0.9;
-        utterance.pitch = 1;
-        speechSynthesis.speak(utterance);
-        console.log("✅ Browser TTS anında başladı");
-      } catch (browserTTSError) {
-        console.error("Browser TTS hatası:", browserTTSError);
-      }
-      return;
+      return new Promise<void>((resolve) => {
+        try {
+          const utterance = new SpeechSynthesisUtterance(cleanedText);
+          utterance.lang = 'tr-TR';
+          utterance.rate = 0.9;
+          utterance.pitch = 1;
+          utterance.onend = () => resolve();
+          utterance.onerror = () => resolve();
+          speechSynthesis.speak(utterance);
+          console.log("✅ Browser TTS anında başladı");
+        } catch (browserTTSError) {
+          console.error("Browser TTS hatası:", browserTTSError);
+          resolve();
+        }
+      });
     }
 
     // ElevenLabs API kullan
@@ -375,24 +399,35 @@ function App() {
       const audioUrl = URL.createObjectURL(blob);
       const audio = new Audio(audioUrl);
       
-      // **ÖNEMLI**: Hazır olur olmaz hemen çal
-      audio.play();
-      console.log("✅ ElevenLabs TTS anında çalmaya başladı");
-      
-      setBuddyAudio(audio);
+      // Promise ile audio bitimini bekle
+      return new Promise<void>((resolve) => {
+        audio.onended = () => resolve();
+        audio.onerror = () => resolve();
+        
+        // **ÖNEMLI**: Hazır olur olmaz hemen çal
+        audio.play();
+        console.log("✅ ElevenLabs TTS anında çalmaya başladı");
+        
+        setBuddyAudio(audio);
+      });
     } catch (err) {
       console.error("ElevenLabs TTS hatası, Browser TTS'e geçiliyor:", err);
       // Fallback: Browser TTS
-      try {
-        const utterance = new SpeechSynthesisUtterance(cleanedText);
-        utterance.lang = 'tr-TR';
-        utterance.rate = 0.9;
-        utterance.pitch = 1;
-        speechSynthesis.speak(utterance);
-        console.log("🔊 Fallback Browser TTS anında başladı");
-      } catch (browserTTSError) {
-        console.error("Browser TTS hatası da var:", browserTTSError);
-      }
+      return new Promise<void>((resolve) => {
+        try {
+          const utterance = new SpeechSynthesisUtterance(cleanedText);
+          utterance.lang = 'tr-TR';
+          utterance.rate = 0.9;
+          utterance.pitch = 1;
+          utterance.onend = () => resolve();
+          utterance.onerror = () => resolve();
+          speechSynthesis.speak(utterance);
+          console.log("🔊 Fallback Browser TTS anında başladı");
+        } catch (browserTTSError) {
+          console.error("Browser TTS hatası da var:", browserTTSError);
+          resolve();
+        }
+      });
     }
   };
 
@@ -425,8 +460,92 @@ function App() {
     else handlePositionSelected(CAMERA_PRESETS.soluna); // Sağ tarafta ise soluna otur
   };
 
-  const handleSessionStart = (imageBase64: string) => {
+  // Pomodoro state'leri
+  const [studyDuration, setStudyDuration] = React.useState(25); // Dakika
+  const [breakDuration, setBreakDuration] = React.useState(5); // Dakika
+  const [isBreakTime, setIsBreakTime] = React.useState(false);
+  const [pomodoroActive, setPomodoroActive] = React.useState(false);
+  
+  // Pomodoro TTS flag'i (duplicate önlemek için)
+  const [isPlayingPomodoroTTS, setIsPlayingPomodoroTTS] = React.useState(false);
+
+  // Pomodoro callback fonksiyonları
+  const handleBreakStart = React.useCallback(() => {
+    console.log("☕ Mola başlıyor! AI buddy susacak...");
+    setIsPlayingPomodoroTTS(true); // Normal TTS'i blokla
+    setBuddyCyclePaused(true); // AI buddy'yi sustur
+    setShowBuddyQuestion(false); // Varsa soruyu gizle
+    
+    // Pomodoro TTS'i çal
+    playTTSImmediately("Mola vakti! Güzel bir çalışma oldu, şimdi biraz dinlen.").then(() => {
+      // TTS bittiğinde flag'i temizle
+      setTimeout(() => {
+        setIsPlayingPomodoroTTS(false);
+      }, 500); // 500ms buffer
+    }).catch(() => {
+      setIsPlayingPomodoroTTS(false);
+    });
+  }, [playTTSImmediately]);
+  
+  const handleStudyStart = React.useCallback(() => {
+    console.log("🕒 Ders başlıyor! AI buddy tekrar aktif olacak...");
+    setIsPlayingPomodoroTTS(true); // Normal TTS'i blokla
+    setBuddyCyclePaused(false); // AI buddy'yi tekrar aktifleştir
+    shouldAskNewQuestionRef.current = true; // Yeni soru sorabilir
+    
+    // **YENİ**: Bir ders süresi tamamlandı, rozet kontrolü
+    const newBadgeCount = earnedBadges + 1;
+    if (newBadgeCount <= 10) {
+      setEarnedBadges(newBadgeCount);
+      console.log("🏆 Yeni rozet kazanıldı! Toplam rozet:", newBadgeCount);
+      
+      // Rozet bildirimi
+      const badgeNames = [
+        "", "Odak Yolcusu", "Pomodoro Kaşifi", "Acemi Bilgin", "Odaklanma Savaşçısı",
+        "Kıdemli Araştırmacı", "Zinciri Kırma", "Akademinin Yıldızı", "İş Bitirici",
+        "Demir İrade", "Pomodoro Gurusu"
+      ];
+      
+      // Önce mola bitim mesajı, sonra rozet bildirimi
+      playTTSImmediately("Mola bitti! Haydi tekrar çalışmaya başlayalım.").then(() => {
+        // 2 saniye sonra rozet bildirimi
+        setTimeout(() => {
+          if (newBadgeCount <= 10) {
+            playTTSImmediately(`Tebrikler! ${badgeNames[newBadgeCount]} rozetini kazandın!`);
+          }
+        }, 2000);
+        
+        // TTS bittiğinde flag'i temizle
+        setTimeout(() => {
+          setIsPlayingPomodoroTTS(false);
+        }, 500);
+      }).catch(() => {
+        setIsPlayingPomodoroTTS(false);
+      });
+    } else {
+      // 10. rozetten sonra normal mola bitim mesajı
+      playTTSImmediately("Mola bitti! Haydi tekrar çalışmaya başlayalım.").then(() => {
+        // TTS bittiğinde flag'i temizle
+        setTimeout(() => {
+          setIsPlayingPomodoroTTS(false);
+        }, 500); // 500ms buffer
+      }).catch(() => {
+        setIsPlayingPomodoroTTS(false);
+      });
+    }
+  }, [playTTSImmediately, earnedBadges]);
+  
+  const handlePomodoroModeChange = React.useCallback((newIsBreakTime: boolean) => {
+    setIsBreakTime(newIsBreakTime);
+  }, []);
+
+  const handleSessionStart = (imageBase64: string, studyMinutes: number, breakMinutes: number) => {
     setSessionImage(imageBase64);
+    setStudyDuration(studyMinutes);
+    setBreakDuration(breakMinutes);
+    setPomodoroActive(true);
+    setIsBreakTime(false);
+    setIsPlayingPomodoroTTS(false); // Pomodoro TTS flag'ini sıfırla
     setShowPositionSelector(true); // Önce pozisyon seçimi göster
     setLoading(false);
     setQuestionsJson(null);
@@ -440,6 +559,7 @@ function App() {
     setWaitingForUserResponse(false); // Yanıt bekleme flag'ini sıfırla
     shouldAskNewQuestionRef.current = false;
     console.log("[DEBUG] handleSessionStart çağrıldı, imageBase64 uzunluğu:", imageBase64.length);
+    console.log("[DEBUG] Pomodoro ayarları - Ders:", studyMinutes, "dk, Mola:", breakMinutes, "dk");
   };
 
   // Pozisyon seçildiğinde session'ı başlat
@@ -946,9 +1066,13 @@ function App() {
           setShowUserResponse(false);
           setShowBuddyQuestion(true);
           
-          // **DÜZELTME**: Normal konuşmada da TTS'i hemen başlat
-          console.log("🚀 Normal konuşma AI yanıtı geldi, TTS hemen başlatılıyor:", parsed!.ai_response_text);
-          playTTSImmediately(parsed!.ai_response_text);
+          // **DÜZELTME**: Normal konuşmada da TTS'i hemen başlat (pomodoro TTS yoksa)
+          if (!isPlayingPomodoroTTS) {
+            console.log("🚀 Normal konuşma AI yanıtı geldi, TTS hemen başlatılıyor:", parsed!.ai_response_text);
+            playTTSImmediately(parsed!.ai_response_text);
+          } else {
+            console.log("🚫 Pomodoro TTS çalıyor, normal konuşma TTS'i bloklandı");
+          }
           
           // **YENİ**: AI yanıtını chat'e ekle
           addChatMessage('ai', parsed!.ai_response_text);
@@ -998,10 +1122,14 @@ function App() {
           setShowUserResponse(false);
           setShowBuddyQuestion(true);
           
-          // **DÜZELTME**: Parse hatası durumunda da TTS'i hemen başlat
+          // **DÜZELTME**: Parse hatası durumunda da TTS'i hemen başlat (pomodoro TTS yoksa)
           const errorMessage = "Anlayamadım, tekrar söyler misin?";
-          console.log("🚀 Parse hatası mesajı, TTS hemen başlatılıyor:", errorMessage);
-          playTTSImmediately(errorMessage);
+          if (!isPlayingPomodoroTTS) {
+            console.log("🚀 Parse hatası mesajı, TTS hemen başlatılıyor:", errorMessage);
+            playTTSImmediately(errorMessage);
+          } else {
+            console.log("🚫 Pomodoro TTS çalıyor, parse hatası TTS'i bloklandı");
+          }
           
           // **YENİ**: Parse hatası mesajını chat'e ekle (duplicate kontrolü ile)
           addChatMessage('ai', errorMessage);
@@ -1055,15 +1183,18 @@ function App() {
         buddyResponse.target_question_number !== "kullanici_sorusu" && 
         buddyResponse.target_question_number !== "devam" &&
         showBuddyQuestion &&
-        lastTTSQuestionRef.current !== buddyResponse.ai_question) { // Duplicate kontrolü
+        lastTTSQuestionRef.current !== buddyResponse.ai_question && // Duplicate kontrolü
+        !isPlayingPomodoroTTS) { // Pomodoro TTS çalarken normal TTS'i blokla
       
       console.log("🎵 Normal buddy sorusu için TTS anında başlatılıyor:", buddyResponse.ai_question.substring(0, 50) + "...");
       lastTTSQuestionRef.current = buddyResponse.ai_question; // Son soruyu kaydet
       playTTSImmediately(buddyResponse.ai_question);
       
       // **NOT**: Chat'e ekleme delay effect'inde yapılıyor, duplicate önlemek için burada kaldırıldı
+    } else if (isPlayingPomodoroTTS) {
+      console.log("🚫 Pomodoro TTS çalıyor, normal buddy TTS bloklandı");
     }
-  }, [buddyResponse, showBuddyQuestion, addChatMessage]);
+  }, [buddyResponse, showBuddyQuestion, addChatMessage, isPlayingPomodoroTTS]);
 
   // **KALDIRILD**: Eski TTS oynatma sistemi - artık anında başlatıldığı için gerek yok
 
@@ -1306,9 +1437,13 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
       const conversationData = await conversationResponse.json();
       const result = conversationData?.candidates?.[0]?.content?.parts?.[0]?.text || "Yanıt alınamadı.";
       
-      // **DÜZELTME**: TTS'i paralel olarak hemen başlat (gecikme olmadan)
-      console.log("🚀 AI yanıtı geldi, TTS hemen başlatılıyor:", result);
-      playTTSImmediately(result);
+      // **DÜZELTME**: TTS'i paralel olarak hemen başlat (gecikme olmadan, pomodoro TTS yoksa)
+      if (!isPlayingPomodoroTTS) {
+        console.log("🚀 AI yanıtı geldi, TTS hemen başlatılıyor:", result);
+        playTTSImmediately(result);
+      } else {
+        console.log("🚫 Pomodoro TTS çalıyor, kullanıcı soru yanıtı TTS'i bloklandı");
+      }
       
       // **YENİ**: AI yanıtını chat'e ekle (kullanıcı sorusu yanıtı)
       addChatMessage('ai', result);
@@ -1646,7 +1781,11 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
           alignItems: "center",
           justifyContent: "space-between"
         }}>
-          <span>💬 Sohbet Geçmişi</span>
+          <span>
+            {activeTab === 'chat' && '💬 Sohbet Geçmişi'}
+            {activeTab === 'notes' && '📝 Notlarım'}
+            {activeTab === 'badges' && '🏆 Rozetlerim'}
+          </span>
           <button
             onClick={() => setIsChatPanelOpen(false)}
             style={{
@@ -1662,113 +1801,234 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
           </button>
         </div>
 
-        {/* Chat Messages Area */}
+        {/* Tab Bar */}
         <div style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: "16px",
           display: "flex",
-          flexDirection: "column",
-          gap: "12px",
-          fontSize: 14
+          background: "rgba(0,0,0,0.2)",
+          borderBottom: "1px solid rgba(255,255,255,0.1)"
         }}>
-          {chatMessages.length === 0 ? (
+          <button
+            onClick={() => setActiveTab('chat')}
+            style={{
+              flex: 1,
+              padding: "12px 16px",
+              background: activeTab === 'chat' ? "rgba(124, 58, 237, 0.3)" : "transparent",
+              border: "none",
+              color: activeTab === 'chat' ? "#fff" : "#a78bfa",
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: "pointer",
+              transition: "all 0.2s ease",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              borderBottom: activeTab === 'chat' ? "2px solid #7c3aed" : "2px solid transparent"
+            }}
+            onMouseEnter={(e) => {
+              if (activeTab !== 'chat') {
+                e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+                e.currentTarget.style.color = "#fff";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (activeTab !== 'chat') {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.color = "#a78bfa";
+              }
+            }}
+          >
+            💬 Sohbet
+          </button>
+          
+          <button
+            onClick={() => setActiveTab('notes')}
+            style={{
+              flex: 1,
+              padding: "12px 16px",
+              background: activeTab === 'notes' ? "rgba(124, 58, 237, 0.3)" : "transparent",
+              border: "none",
+              color: activeTab === 'notes' ? "#fff" : "#a78bfa",
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: "pointer",
+              transition: "all 0.2s ease",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              borderBottom: activeTab === 'notes' ? "2px solid #7c3aed" : "2px solid transparent"
+            }}
+            onMouseEnter={(e) => {
+              if (activeTab !== 'notes') {
+                e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+                e.currentTarget.style.color = "#fff";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (activeTab !== 'notes') {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.color = "#a78bfa";
+              }
+            }}
+          >
+            📝 Notlar
+          </button>
+          
+          <button
+            onClick={() => setActiveTab('badges')}
+            style={{
+              flex: 1,
+              padding: "12px 16px",
+              background: activeTab === 'badges' ? "rgba(124, 58, 237, 0.3)" : "transparent",
+              border: "none",
+              color: activeTab === 'badges' ? "#fff" : "#a78bfa",
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: "pointer",
+              transition: "all 0.2s ease",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              borderBottom: activeTab === 'badges' ? "2px solid #7c3aed" : "2px solid transparent"
+            }}
+            onMouseEnter={(e) => {
+              if (activeTab !== 'badges') {
+                e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+                e.currentTarget.style.color = "#fff";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (activeTab !== 'badges') {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.color = "#a78bfa";
+              }
+            }}
+          >
+            🏆 Rozetler
+          </button>
+        </div>
+
+        {/* Content Area */}
+        {activeTab === 'chat' ? (
+          <>
+            {/* Chat Messages Area */}
             <div style={{
-              color: "#a78bfa",
-              textAlign: "center",
-              marginTop: "50%",
-              fontStyle: "italic"
+              flex: 1,
+              overflowY: "auto",
+              padding: "16px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "12px",
+              fontSize: 14
             }}>
-              Henüz konuşma yok...
-            </div>
-          ) : (
-            chatMessages.map((message) => (
-              <div
-                key={message.id}
-                style={{
-                  alignSelf: message.type === 'user' ? 'flex-end' : 'flex-start',
-                  maxWidth: '80%'
-                }}
-              >
+              {chatMessages.length === 0 ? (
                 <div style={{
-                  background: message.type === 'user' 
-                    ? "linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)"
-                    : "linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)",
-                  color: "#fff",
-                  padding: "10px 14px",
-                  borderRadius: 16,
-                  fontSize: 13,
-                  lineHeight: 1.4,
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.15)"
+                  color: "#a78bfa",
+                  textAlign: "center",
+                  marginTop: "50%",
+                  fontStyle: "italic"
                 }}>
-                  <div style={{ 
-                    fontSize: 11, 
-                    opacity: 0.8, 
-                    marginBottom: 4,
-                    fontWeight: 600
-                  }}>
-                    {message.type === 'user' ? '👤 Sen' : '🤖 AI Buddy'}
-                  </div>
-                  <div>{message.text}</div>
-                  <div style={{ 
-                    fontSize: 10, 
-                    opacity: 0.6, 
-                    marginTop: 4,
-                    textAlign: 'right'
-                  }}>
-                    {new Date(message.timestamp).toLocaleTimeString('tr-TR', {
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </div>
+                  Henüz konuşma yok...
                 </div>
-                             </div>
-             ))
-           )}
-                      {/* **YENİ**: Gerçek zamanlı durum göstergesi */}
-           {(isRecording || userRecording || isProcessingResponse) && (
-             <div style={{
-               background: "rgba(0,0,0,0.3)",
-               margin: "8px 16px",
-               padding: "8px 12px",
-               borderRadius: 12,
-               fontSize: 12,
-               color: "#fff",
-               display: "flex",
-               alignItems: "center",
-               gap: "8px",
-               border: "1px solid rgba(124,58,237,0.3)"
-             }}>
-               <div style={{
-                 width: 8,
-                 height: 8,
-                 borderRadius: "50%",
-                 background: isRecording || userRecording ? "#ef4444" : "#10b981",
-                 animation: "pulse 1s infinite"
-               }} />
-               <span>
-                 {(isRecording || userRecording) && "🎤 Kayıt yapılıyor..."}
-                 {isProcessingResponse && !(isRecording || userRecording) && "🤖 AI düşünüyor..."}
-               </span>
-             </div>
-           )}
+              ) : (
+                chatMessages.map((message) => (
+                  <div
+                    key={message.id}
+                    style={{
+                      alignSelf: message.type === 'user' ? 'flex-end' : 'flex-start',
+                      maxWidth: '80%'
+                    }}
+                  >
+                    <div style={{
+                      background: message.type === 'user' 
+                        ? "linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)"
+                        : "linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)",
+                      color: "#fff",
+                      padding: "10px 14px",
+                      borderRadius: 16,
+                      fontSize: 13,
+                      lineHeight: 1.4,
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.15)"
+                    }}>
+                      <div style={{ 
+                        fontSize: 11, 
+                        opacity: 0.8, 
+                        marginBottom: 4,
+                        fontWeight: 600
+                      }}>
+                        {message.type === 'user' ? '👤 Sen' : '🤖 AI Buddy'}
+                      </div>
+                      <div>{message.text}</div>
+                      <div style={{ 
+                        fontSize: 10, 
+                        opacity: 0.6, 
+                        marginTop: 4,
+                        textAlign: 'right'
+                      }}>
+                        {new Date(message.timestamp).toLocaleTimeString('tr-TR', {
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+              
+              {/* **YENİ**: Gerçek zamanlı durum göstergesi */}
+              {(isRecording || userRecording || isProcessingResponse) && (
+                <div style={{
+                  background: "rgba(0,0,0,0.3)",
+                  margin: "8px 16px",
+                  padding: "8px 12px",
+                  borderRadius: 12,
+                  fontSize: 12,
+                  color: "#fff",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  border: "1px solid rgba(124,58,237,0.3)"
+                }}>
+                  <div style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: isRecording || userRecording ? "#ef4444" : "#10b981",
+                    animation: "pulse 1s infinite"
+                  }} />
+                  <span>
+                    {(isRecording || userRecording) && "🎤 Kayıt yapılıyor..."}
+                    {isProcessingResponse && !(isRecording || userRecording) && "🤖 AI düşünüyor..."}
+                  </span>
+                </div>
+              )}
 
-           {/* **YENİ**: Auto-scroll için referans elementi */}
-           <div ref={chatMessagesEndRef} />
-         </div>
+              {/* **YENİ**: Auto-scroll için referans elementi */}
+              <div ref={chatMessagesEndRef} />
+            </div>
 
-         {/* Chat Panel Footer */}
-         <div style={{
-           background: "rgba(0,0,0,0.2)",
-           padding: "12px 16px",
-           borderTop: "1px solid rgba(255,255,255,0.1)",
-           fontSize: 12,
-           color: "#a78bfa",
-           textAlign: "center"
-         }}>
-                    Mikrofon kullanarak AI Buddy ile konuşabilirsin
-         </div>
-       </div>
+            {/* Chat Panel Footer */}
+            <div style={{
+              background: "rgba(0,0,0,0.2)",
+              padding: "12px 16px",
+              borderTop: "1px solid rgba(255,255,255,0.1)",
+              fontSize: 12,
+              color: "#a78bfa",
+              textAlign: "center"
+            }}>
+              Mikrofon kullanarak AI Buddy ile konuşabilirsin
+            </div>
+          </>
+        ) : activeTab === 'notes' ? (
+          /* Notes Area */
+          <NotesArea />
+        ) : (
+          /* Badges Area */
+          <BadgesArea earnedBadges={earnedBadges} />
+        )}
+      </div>
 
        {/* **YENİ**: CSS animasyonları */}
        <style>{`
@@ -2162,6 +2422,19 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
       {/* Müzik Çalar - Session başladığında ve sahne yüklendiğinde göster */}
       {sessionStarted && sceneReady && (
         <MusicPlayer playlistId="PLkDQC8YWp9j3jNgtgDZ2rIqaVNO4LyQZV" />
+      )}
+
+      {/* Pomodoro Timer - Session başladığında göster */}
+      {sessionStarted && sceneReady && (
+        <PomodoroTimer
+          studyDuration={studyDuration}
+          breakDuration={breakDuration}
+          isBreakTime={isBreakTime}
+          onModeChange={handlePomodoroModeChange}
+          onBreakStart={handleBreakStart}
+          onStudyStart={handleStudyStart}
+          isActive={pomodoroActive}
+        />
       )}
     </>
   );

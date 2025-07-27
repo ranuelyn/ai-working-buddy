@@ -11,8 +11,50 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start; /* Scroll için üstten başlasın */
   gap: 28px;
+  padding: 40px 20px; /* Üst-alt padding ekle */
+  box-sizing: border-box;
+  scroll-behavior: smooth; /* Smooth scroll */
+}
+
+/* Custom scrollbar */
+.lobby-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.lobby-container::-webkit-scrollbar-track {
+  background: rgba(35, 35, 74, 0.3);
+  border-radius: 10px;
+}
+
+.lobby-container::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #7c3aed 0%, #6366f1 100%);
+  border-radius: 10px;
+  box-shadow: 0 2px 6px rgba(124, 58, 237, 0.3);
+}
+
+.lobby-container::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #8b5cf6 0%, #7c3aed 100%);
+}
+
+/* Mobile responsive scroll */
+@media (max-height: 800px) {
+  .lobby-container {
+    padding: 20px 15px;
+    gap: 20px;
+  }
+  
+  .lobby-avatar {
+    width: 150px;
+    height: 150px;
+    margin-bottom: 16px;
+  }
+  
+  .lobby-title {
+    font-size: 1.8rem;
+    margin-bottom: 12px;
+  }
 }
 
 .lobby-avatar {
