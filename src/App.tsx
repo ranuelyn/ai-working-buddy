@@ -2,6 +2,7 @@ import * as React from "react";
 import { Canvas } from "@react-three/fiber";
 import { Experience } from "./components/Experience";
 import { Lobby } from "./components/Lobby";
+import { MusicPlayer } from "./components/MusicPlayer";
 import './App.css';
 
 const CAMERA_PRESETS = {
@@ -435,6 +436,8 @@ function App() {
     setConversationCount(0);
     setConversationHistory([]);
     setPastConversations([]);
+    setInitialQuestionAsked(false); // İlk soru flag'ini sıfırla
+    setWaitingForUserResponse(false); // Yanıt bekleme flag'ini sıfırla
     shouldAskNewQuestionRef.current = false;
     console.log("[DEBUG] handleSessionStart çağrıldı, imageBase64 uzunluğu:", imageBase64.length);
   };
@@ -519,22 +522,43 @@ function App() {
     }
   }, []);
 
-  // 2. Sahneye geçtikten sonra 5 saniye bekle, sonra buddy promptunu yolla
+  // İlk soru için state
+  const [initialQuestionAsked, setInitialQuestionAsked] = React.useState(false);
+  
+  // Kullanıcı yanıtı bekleme state'i
+  const [waitingForUserResponse, setWaitingForUserResponse] = React.useState(false);
+
+  // 2. Sahneye geçtikten sonra 5 saniye bekle, sonra buddy promptunu yolla (sadece 1 kez)
   React.useEffect(() => {
-    if (sceneReady && questionsJson && questionsJson.questions) {
+    console.log(`🔍 İlk soru effect kontrol:
+      sceneReady: ${sceneReady}
+      questionsJson: ${questionsJson ? 'var' : 'yok'}
+      questions length: ${questionsJson?.questions?.length || 0}
+      initialQuestionAsked: ${initialQuestionAsked}`);
+      
+    if (sceneReady && questionsJson && questionsJson.questions && !initialQuestionAsked) {
+      console.log("🎯 İlk buddy sorusu hazırlanıyor...");
       setBuddyResponse(null);
       setShowBuddyQuestion(false);
+      shouldAskNewQuestionRef.current = false; // Flag'i başlangıçta sıfırla
       
       // **YENİ**: Mikrofon izni ön-yüklemesi (arkaplanda)
       prewarmMicrophone();
       
       const timeout = setTimeout(() => {
+        console.log("🚀 İlk buddy sorusu timeout tetiklendi, gönderiliyor...");
+        setInitialQuestionAsked(true); // Flag'i set et ki tekrar sormasın
         runBuddyPrompt();
       }, 5000);
-      return () => clearTimeout(timeout);
+      return () => {
+        console.log("🧹 İlk soru timeout temizlendi");
+        clearTimeout(timeout);
+      };
+    } else {
+      console.log("❌ İlk soru effect koşulları sağlanmadı");
     }
     // eslint-disable-next-line
-  }, [sceneReady, questionsJson, prewarmMicrophone]);
+  }, [sceneReady, questionsJson, prewarmMicrophone, initialQuestionAsked]);
 
   // Konuşmayı özetleme fonksiyonu
   const summarizeConversation = async (history: ConversationHistory) => {
@@ -586,13 +610,20 @@ function App() {
 
   // 3. Buddy promptunu yolla
   const runBuddyPrompt = React.useCallback(async () => {
-    if (!questionsJson || !questionsJson.questions) return;
+    if (!questionsJson || !questionsJson.questions) {
+      console.log("❌ runBuddyPrompt: questionsJson yok, çıkılıyor");
+      return;
+    }
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey) return;
+    if (!apiKey) {
+      console.log("❌ runBuddyPrompt: API key yok, çıkılıyor");
+      return;
+    }
     setLoading(false); // Buddy promptunda loading yok
-    console.log("🚀 Buddy promptu gönderiliyor...");
+    console.log("🚀 runBuddyPrompt ÇAĞRILDI!");
     console.log("📊 Conversation count:", conversationCount);
     console.log("📚 Past conversations:", pastConversations);
+    console.log("🎯 İlk soru soruldu mu:", initialQuestionAsked);
     
     try {
       const requestData = {
@@ -636,7 +667,7 @@ function App() {
       setBuddyResponse(null);
       console.error("Gemini Buddy API hatası:", err);
     }
-  }, [questionsJson, conversationCount, pastConversations]);
+  }, [questionsJson, conversationCount, pastConversations, initialQuestionAsked]);
 
   // Past conversations değiştiğinde yeni soru sor
   React.useEffect(() => {
@@ -647,15 +678,18 @@ function App() {
       isProcessingResponse: ${isProcessingResponse}
       shouldAskNewQuestionRef.current: ${shouldAskNewQuestionRef.current}
       isUserQuestionMode: ${isUserQuestionMode}
-      buddyCyclePaused: ${buddyCyclePaused}`);
+      buddyCyclePaused: ${buddyCyclePaused}
+      waitingForUserResponse: ${waitingForUserResponse}
+      initialQuestionAsked: ${initialQuestionAsked}`);
       
-    if (pastConversations.length > 0 && !showBuddyQuestion && !isRecording && !isProcessingResponse && shouldAskNewQuestionRef.current && !isUserQuestionMode && !buddyCyclePaused) {
+    // İlk soru sorulmadan past conversations effect çalışmasın
+    if (pastConversations.length > 0 && initialQuestionAsked && !showBuddyQuestion && !isRecording && !isProcessingResponse && shouldAskNewQuestionRef.current && !isUserQuestionMode && !buddyCyclePaused && !waitingForUserResponse) {
       console.log("🔄 Past conversations güncellendi, yeni soru soruluyor...");
       shouldAskNewQuestionRef.current = false; // Flag'i sıfırla
       const timeout = setTimeout(() => {
         // **DÜZELTME**: Timeout içinde tekrar kontrol et
         console.log("⏰ Past conversations timeout tetiklendi, koşulları tekrar kontrol ediliyor...");
-        if (!showBuddyQuestion && !isRecording && !isProcessingResponse && !isUserQuestionMode && !buddyCyclePaused) {
+        if (initialQuestionAsked && !showBuddyQuestion && !isRecording && !isProcessingResponse && !isUserQuestionMode && !buddyCyclePaused && !waitingForUserResponse) {
           console.log("✅ Past conversations timeout koşulları sağlandı, runBuddyPrompt çağrılıyor");
           runBuddyPrompt();
         } else {
@@ -667,7 +701,7 @@ function App() {
     } else {
       console.log("❌ Past conversations effect koşulları sağlanmadı");
     }
-  }, [pastConversations.length, showBuddyQuestion, isRecording, isProcessingResponse, runBuddyPrompt, isUserQuestionMode, buddyCyclePaused]);
+  }, [pastConversations.length, showBuddyQuestion, isRecording, isProcessingResponse, runBuddyPrompt, isUserQuestionMode, buddyCyclePaused, waitingForUserResponse, initialQuestionAsked]);
 
   // 4. Buddy sorusu geldikten sonra delay_seconds kadar bekleyip ekrana göster
   const delayTimeoutRef = React.useRef<number | undefined>(undefined);
@@ -693,6 +727,8 @@ function App() {
         if (buddyResponse.target_question_number !== "kullanici_sorusu" && 
             buddyResponse.target_question_number !== "devam") {
           addChatMessage('ai', buddyResponse.ai_question);
+          setWaitingForUserResponse(true); // Kullanıcı yanıtı bekle
+          console.log("⏳ AI soru sordu, kullanıcı yanıtı bekleniyor...");
         }
         
         // **DÜZELTME**: AI soru sorduktan sonra flag'i sıfırla ki aynı anda yeni soru sorulmasın
@@ -781,6 +817,8 @@ function App() {
   // Ses kaydını işleme ve Gemini'ya gönderme
   const processAudioResponse = async (audioBlob: Blob) => {
     setIsProcessingResponse(true);
+    setWaitingForUserResponse(false); // Kullanıcı yanıt verdi
+    console.log("✅ Kullanıcı yanıt verdi, bekleme durumu sona erdi");
     
     try {
       // Ses dosyasını Base64'e çevir
@@ -940,8 +978,8 @@ function App() {
               // **DÜZELTME**: Normal conversation bitiminde backup buddy cycle tetikleyicisi
               setTimeout(() => {
                 console.log("🔄 Normal conversation backup cycle tetikleniyor...");
-                if (!showBuddyQuestion && !isRecording && !isProcessingResponse && 
-                    !isUserQuestionMode && !buddyCyclePaused && 
+                if (initialQuestionAsked && !showBuddyQuestion && !isRecording && !isProcessingResponse && 
+                    !isUserQuestionMode && !buddyCyclePaused && !waitingForUserResponse &&
                     shouldAskNewQuestionRef.current === true) { // **YENİ**: Flag kontrolü eklendi
                   console.log("✅ Backup cycle koşulları sağlandı, yeni soru soruluyor");
                   shouldAskNewQuestionRef.current = false; // Flag'i kullan ve sıfırla
@@ -984,8 +1022,8 @@ function App() {
             // **DÜZELTME**: Parse hatası bitiminde backup buddy cycle tetikleyicisi
             setTimeout(() => {
               console.log("🔄 Parse hatası backup cycle tetikleniyor...");
-              if (!showBuddyQuestion && !isRecording && !isProcessingResponse && 
-                  !isUserQuestionMode && !buddyCyclePaused && 
+              if (initialQuestionAsked && !showBuddyQuestion && !isRecording && !isProcessingResponse && 
+                  !isUserQuestionMode && !buddyCyclePaused && !waitingForUserResponse &&
                   shouldAskNewQuestionRef.current === true) { // **YENİ**: Flag kontrolü eklendi
                 console.log("✅ Parse hatası backup cycle koşulları sağlandı, yeni soru soruluyor");
                 shouldAskNewQuestionRef.current = false; // Flag'i kullan ve sıfırla
@@ -1007,15 +1045,20 @@ function App() {
     }
   };
 
-  // **DÜZELTME**: Normal buddy soruları için TTS (sadece delay ile gelen sorular)
+  // TTS için önceki soru tracking
+  const lastTTSQuestionRef = React.useRef<string>("");
+
+  // **DÜZELTME**: Normal buddy soruları için TTS (sadece delay ile gelen sorular, duplicate kontrolü ile)
   React.useEffect(() => {
     // Sadece normal buddy cycle'dan gelen sorular için (kullanıcı sorusu yanıtları değil)
     if (buddyResponse && buddyResponse.ai_question && 
         buddyResponse.target_question_number !== "kullanici_sorusu" && 
         buddyResponse.target_question_number !== "devam" &&
-        showBuddyQuestion) {
+        showBuddyQuestion &&
+        lastTTSQuestionRef.current !== buddyResponse.ai_question) { // Duplicate kontrolü
       
       console.log("🎵 Normal buddy sorusu için TTS anında başlatılıyor:", buddyResponse.ai_question.substring(0, 50) + "...");
+      lastTTSQuestionRef.current = buddyResponse.ai_question; // Son soruyu kaydet
       playTTSImmediately(buddyResponse.ai_question);
       
       // **NOT**: Chat'e ekleme delay effect'inde yapılıyor, duplicate önlemek için burada kaldırıldı
@@ -1167,6 +1210,7 @@ function App() {
     console.log("🔄 Kullanıcı sorusu işleniyor...");
     setIsProcessingResponse(true);
     setUserAnswerMode(true); // Kullanıcıya özel cevap bekleniyor
+    setWaitingForUserResponse(false); // Kullanıcı soru modu da yanıt sayılır
     setHeadTurn(0); // Cevap gelirken kullanıcıya dön
     try {
       const arrayBuffer = await audioBlob.arrayBuffer();
@@ -1351,12 +1395,14 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
         
         // 1 dakika geçti ve AI buddy soru sormuyorsa yeni soru sor
         if (timeSinceLastActivity >= oneMinute && 
+            initialQuestionAsked &&
             !showBuddyQuestion && 
             !isRecording && 
             !userRecording && 
             !isProcessingResponse && 
             !isUserQuestionMode && 
             !buddyCyclePaused &&
+            !waitingForUserResponse &&
             questionsJson && questionsJson.questions) {
           
           console.log("🔔 1 dakika geçti, AI buddy yeni soru soracak");
@@ -1773,10 +1819,10 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
           onClick={startRecording}
           style={{
             position: "absolute",
-            bottom: 40,
+            bottom: 140, // Müzik çalar için yer bırak
             left: "50%",
             transform: "translateX(-50%)",
-            zIndex: 10,
+            zIndex: 1100, // Müzik çaların üstünde
             width: 80,
             height: 80,
             borderRadius: "50%",
@@ -1844,10 +1890,10 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
       {isRecording && (
         <div style={{
           position: "absolute",
-          bottom: 40,
+          bottom: 140, // Müzik çalar için yer bırak
           left: "50%",
           transform: "translateX(-50%)",
-          zIndex: 10,
+          zIndex: 1100, // Müzik çaların üstünde
           background: "#dc2626",
           color: "#fff",
           borderRadius: 16,
@@ -1875,10 +1921,10 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
       {isProcessingResponse && (
         <div style={{
           position: "absolute",
-          bottom: 40,
+          bottom: 140, // Müzik çalar için yer bırak
           left: "50%",
           transform: "translateX(-50%)",
-          zIndex: 10,
+          zIndex: 1100, // Müzik çaların üstünde
           background: "#059669",
           color: "#fff",
           borderRadius: 16,
@@ -1909,10 +1955,10 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
           onClick={userRecording ? stopUserRecording : startUserRecording}
           style={{
             position: "absolute",
-            bottom: 40,
+            bottom: 140, // Müzik çalar için yer bırak
             left: "50%",
             transform: "translateX(-50%)",
-            zIndex: 10,
+            zIndex: 1100, // Müzik çaların üstünde
             width: 80,
             height: 80,
             borderRadius: "50%",
@@ -1974,10 +2020,10 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
           onClick={cancelUserRecording}
           style={{
             position: "absolute",
-            bottom: 130,
+            bottom: 230, // Müzik çalar + mikrofon butonu için yer bırak
             left: "50%",
             transform: "translateX(-50%)",
-            zIndex: 11,
+            zIndex: 1100, // Müzik çaların üstünde
             padding: "12px 32px",
             borderRadius: 16,
             border: "none",
@@ -2112,6 +2158,11 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
         <color attach="background" args={['#ffffff']} />
         <Experience headTurnY={headTurn} cameraTarget={camera.target} cameraPosition={camera.position} />
       </Canvas>
+
+      {/* Müzik Çalar - Session başladığında ve sahne yüklendiğinde göster */}
+      {sessionStarted && sceneReady && (
+        <MusicPlayer playlistId="PLkDQC8YWp9j3jNgtgDZ2rIqaVNO4LyQZV" />
+      )}
     </>
   );
 }
