@@ -24,6 +24,13 @@ export const Experience = ({ headTurnY, cameraTarget, cameraPosition }: { headTu
   const [transition, setTransition] = useState(false);
   const [t, setT] = useState(0); // 0: baş, 1: son
 
+  // **YENİ**: Işık pozisyonunu kamera pozisyonuna göre hesapla
+  const lightPosition = [
+    cameraPosition[0] + 1, // Kamera pozisyonundan biraz sağda
+    cameraPosition[1] + 2, // Kamera pozisyonundan biraz yukarıda
+    cameraPosition[2] + 3  // Kamera pozisyonundan biraz önde
+  ] as [number, number, number];
+
   // Hedef değiştiğinde geçiş başlat
   useEffect(() => {
     if (controlsRef.current) {
@@ -80,7 +87,7 @@ export const Experience = ({ headTurnY, cameraTarget, cameraPosition }: { headTu
   return (
     <>
       <OrbitControls ref={controlsRef} makeDefault />
-      <directionalLight position={[1, 2, 3]} intensity={4.5} />
+      <directionalLight position={lightPosition} intensity={4.5} />
       <ambientLight intensity={1.5} />
       <BackgroundRoom />
       <Buddy headTurnY={headTurnY} />

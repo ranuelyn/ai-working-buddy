@@ -1,18 +1,30 @@
 import React, { useState } from "react";
 import type { ChangeEvent } from "react";
 import "./Lobby.css";
+import { ragService, type RAGContext } from "../services/ragService";
 
 // Tüm metinler için Poppins fontunu uygula
 // Ekstra className'ler ile spacing ve modern efektler için alan açıyorum
 
 type LobbyProps = {
-  handleSessionStart: (imageBase64: string, studyDuration: number, breakDuration: number) => void;
+  handleSessionStart: (imageBase64: string, studyDuration: number, breakDuration: number, ragContext?: RAGContext) => void;
+};
+
+type FileData = {
+  id: string;
+  name: string;
+  type: 'image' | 'pdf';
+  data: string;
+  size: number;
+  file: File;
 };
 
 export const Lobby: React.FC<LobbyProps> = ({ handleSessionStart }) => {
   const [topic, setTopic] = useState("");
   const [inputFocused, setInputFocused] = useState(false);
-  const [materialImages, setMaterialImages] = useState<string[]>([]);
+  const [materialFiles, setMaterialFiles] = useState<FileData[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [ragContext, setRagContext] = useState<RAGContext | null>(null);
   
   // Pomodoro ayarları
   const [studyDuration, setStudyDuration] = useState(25); // Dakika
@@ -22,28 +34,146 @@ export const Lobby: React.FC<LobbyProps> = ({ handleSessionStart }) => {
     setTopic(e.target.value);
   };
 
-  const handleClick = () => {
-    if (materialImages.length > 0) {
-      handleSessionStart(materialImages[0], studyDuration, breakDuration);
+  const handleClick = async () => {
+    if (materialFiles.length > 0) {
+      setIsProcessing(true);
+      try {
+        // RAG context'i oluştur
+        const filesForRAG = materialFiles.map(file => ({
+          file: file.file,
+          data: file.data,
+          type: file.type
+        }));
+        
+        const context = await ragService.createRAGContext(filesForRAG);
+        setRagContext(context);
+        
+        // İlk dosyayı kullan (görsel veya PDF)
+        const firstFile = materialFiles[0];
+        // PDF ise ilk sayfayı, görsel ise direkt kullan
+        const imageData = firstFile.type === 'pdf' ? firstFile.data.split('|')[0] : firstFile.data;
+        handleSessionStart(imageData, studyDuration, breakDuration, context);
+      } catch (error) {
+        console.error('Dosya işleme hatası:', error);
+      } finally {
+        setIsProcessing(false);
+      }
     }
   };
 
-  const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
+  // PDF'i görsel sayfalarına çevirme fonksiyonu
+  const convertPdfToImages = async (file: File): Promise<string[]> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          // PDF.js kullanarak PDF'i yükle
+          // @ts-ignore
+          const pdfjsLib = window.pdfjsLib;
+          if (!pdfjsLib) {
+            throw new Error('PDF.js kütüphanesi yüklenemedi');
+          }
+          pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+          
+          const arrayBuffer = e.target?.result as ArrayBuffer;
+          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          
+          const images: string[] = [];
+          
+          // Her sayfayı görsel olarak render et
+          for (let pageNum = 1; pageNum <= Math.min(pdf.numPages, 50); pageNum++) { // Maksimum 50 sayfa
+            const page = await pdf.getPage(pageNum);
+            const viewport = page.getViewport({ scale: 1.5 });
+            
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            
+            const renderContext = {
+              canvasContext: context!,
+              viewport: viewport
+            };
+            
+            await page.render(renderContext).promise;
+            images.push(canvas.toDataURL('image/png'));
+          }
+          
+          resolve(images);
+        } catch (error) {
+          reject(error);
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  };
+
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (files) {
+    if (!files) return;
+
+    setIsProcessing(true);
+    
+    try {
       const fileArr = Array.from(files);
-      fileArr.forEach((file) => {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          setMaterialImages((prev) => [...prev, ev.target?.result as string]);
-        };
-        reader.readAsDataURL(file);
-      });
+      
+      for (const file of fileArr) {
+        // Dosya boyutu kontrolü (5MB)
+        if (file.size > 5 * 1024 * 1024) {
+          alert(`${file.name} dosyası 5MB'dan büyük. Lütfen daha küçük bir dosya seçin.`);
+          continue;
+        }
+
+        const fileId = `${Date.now()}-${Math.random()}`;
+        
+        if (file.type.startsWith('image/')) {
+          // Görsel dosyası
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+                         const fileData: FileData = {
+               id: fileId,
+               name: file.name,
+               type: 'image',
+               data: ev.target?.result as string,
+               size: file.size,
+               file: file
+             };
+            setMaterialFiles(prev => [...prev, fileData]);
+          };
+          reader.readAsDataURL(file);
+        } else if (file.type === 'application/pdf') {
+          // PDF dosyası
+          try {
+            const images = await convertPdfToImages(file);
+            // PDF'in ilk sayfasını kullan
+                         // PDF'in tüm sayfalarını kullan
+             const fileData: FileData = {
+               id: fileId,
+               name: file.name,
+               type: 'pdf',
+               data: images.join('|'), // Tüm sayfaları | ile ayırarak sakla
+               size: file.size,
+               file: file
+             };
+            setMaterialFiles(prev => [...prev, fileData]);
+          } catch (error) {
+            console.error('PDF işleme hatası:', error);
+            alert(`${file.name} PDF dosyası işlenirken hata oluştu.`);
+          }
+        } else {
+          alert(`${file.name} desteklenmeyen dosya türü. Sadece görsel ve PDF dosyaları kabul edilir.`);
+        }
+      }
+    } catch (error) {
+      console.error('Dosya yükleme hatası:', error);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  const handleRemoveImage = (idx: number) => {
-    setMaterialImages((prev) => prev.filter((_, i) => i !== idx));
+  const handleRemoveFile = (fileId: string) => {
+    setMaterialFiles(prev => prev.filter(file => file.id !== fileId));
   };
 
   return (
@@ -169,27 +299,68 @@ export const Lobby: React.FC<LobbyProps> = ({ handleSessionStart }) => {
           />
         </div>
       </div>
+      
       <div className="lobby-upload-container">
         <label className="lobby-upload-label">
           <input
             type="file"
-            accept="image/*"
+            accept="image/*,.pdf"
             style={{ display: "none" }}
-            onChange={handleImageChange}
+            onChange={handleFileChange}
             multiple
           />
-          <span className="lobby-upload-btn">Ders Materyali Görseli Yükle</span>
+          <span className="lobby-upload-btn">
+            {isProcessing ? "İşleniyor..." : "Ders Materyali Yükle (Görsel/PDF)"}
+          </span>
         </label>
-        {materialImages.length > 0 && (
+        
+        {/* Dosya boyutu bilgisi */}
+        <div style={{
+          color: '#a78bfa',
+          fontSize: '12px',
+          textAlign: 'center',
+          marginTop: '8px'
+        }}>
+          📄 PDF dosyaları maksimum 5MB, görseller sınırsız
+        </div>
+        
+        {/* RAG sistemi bilgisi */}
+        <div style={{
+          color: '#10b981',
+          fontSize: '11px',
+          textAlign: 'center',
+          marginTop: '4px',
+          background: 'rgba(16, 185, 129, 0.1)',
+          padding: '4px 8px',
+          borderRadius: '8px',
+          border: '1px solid rgba(16, 185, 129, 0.2)'
+        }}>
+          🤖 RAG Sistemi Aktif - PDF'lerin tüm sayfaları işleniyor
+        </div>
+        
+        {materialFiles.length > 0 && (
           <div className="lobby-upload-preview-multi">
-            {materialImages.map((img, idx) => (
-              <div className="lobby-upload-preview" key={idx}>
-                <img src={img} alt={`Materyal ${idx + 1}`} />
+            {materialFiles.map((file) => (
+              <div className="lobby-upload-preview" key={file.id}>
+                <img src={file.data} alt={file.name} />
+                                 <div style={{
+                   position: 'absolute',
+                   bottom: '4px',
+                   left: '4px',
+                   background: file.type === 'pdf' ? '#ef4444' : '#10b981',
+                   color: '#fff',
+                   fontSize: '10px',
+                   padding: '2px 6px',
+                   borderRadius: '8px',
+                   fontWeight: 600
+                 }}>
+                   {file.type === 'pdf' ? `PDF (${file.data.split('|').length} sayfa)` : 'IMG'}
+                 </div>
                 <button
                   className="lobby-upload-remove"
                   type="button"
-                  onClick={() => handleRemoveImage(idx)}
-                  aria-label="Görseli Kaldır"
+                  onClick={() => handleRemoveFile(file.id)}
+                  aria-label="Dosyayı Kaldır"
                 >
                   ×
                 </button>
@@ -198,13 +369,14 @@ export const Lobby: React.FC<LobbyProps> = ({ handleSessionStart }) => {
           </div>
         )}
       </div>
+      
       <button
         className="lobby-button lobby-button-glow"
-        disabled={!topic.trim()}
+        disabled={!topic.trim() || materialFiles.length === 0 || isProcessing}
         onClick={handleClick}
         type="button"
       >
-        Haydi Başlayalım!
+        {isProcessing ? "İşleniyor..." : "Haydi Başlayalım!"}
       </button>
     </div>
   );

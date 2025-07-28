@@ -47,6 +47,8 @@ export const BadgesArea: React.FC<BadgesAreaProps> = ({ earnedBadges }) => {
       gap: '16px',
       padding: '16px',
       height: '100%',
+      maxHeight: '100%', // **YENİ**: Maksimum yükseklik sınırı
+      overflow: 'hidden', // **YENİ**: Taşmayı engelle
       fontFamily: 'Poppins, Arial, sans-serif'
     }}>
       {/* Header */}
@@ -108,7 +110,9 @@ export const BadgesArea: React.FC<BadgesAreaProps> = ({ earnedBadges }) => {
         gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
         gap: '12px',
         overflowY: 'auto',
-        flex: 1
+        flex: 1,
+        maxHeight: 'calc(100% - 120px)', // **YENİ**: Header ve footer için yer bırak
+        minHeight: 0 // **YENİ**: Flex item'ın shrink olmasını sağla
       }}>
         {BADGE_DEFINITIONS.map((badge) => {
           const isEarned = earnedBadges >= badge.id;

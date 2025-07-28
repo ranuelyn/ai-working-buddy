@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 
 interface MusicPlayerProps {
   playlistId: string;
+  onMinimizeChange?: (isMinimized: boolean) => void; // **YENİ**: Minimize durumu callback'i
 }
 
 declare global {
@@ -11,7 +12,7 @@ declare global {
   }
 }
 
-export const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlistId }) => {
+export const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlistId, onMinimizeChange }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(30); // Başlangıç ses seviyesi %30
   const [isMinimized, setIsMinimized] = useState(false);
@@ -19,6 +20,11 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlistId }) => {
   const [playerReady, setPlayerReady] = useState(false);
   const playerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // **YENİ**: Minimize durumu değiştiğinde parent'a bildir
+  useEffect(() => {
+    onMinimizeChange?.(isMinimized);
+  }, [isMinimized, onMinimizeChange]);
 
   // YouTube iframe API'sini yükle
   useEffect(() => {
@@ -140,9 +146,9 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlistId }) => {
           left: 0,
           right: 0,
           height: isMinimized ? '60px' : '100px',
-          background: 'linear-gradient(135deg, rgba(35, 35, 74, 0.95) 0%, rgba(124, 58, 237, 0.95) 100%)',
-          backdropFilter: 'blur(10px)',
-          borderTop: '1px solid rgba(124, 58, 237, 0.3)',
+          background: 'rgba(0,0,0,0.6)',
+          backdropFilter: 'blur(8px)',
+          borderTop: '1px solid rgba(255,255,255,0.1)',
           zIndex: 1000,
           transition: 'all 0.3s ease',
           display: 'flex',
@@ -164,12 +170,13 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlistId }) => {
              width: isMinimized ? '40px' : '60px',
              height: isMinimized ? '40px' : '60px',
              borderRadius: '8px',
-             background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+             background: '#000',
              display: 'flex',
              alignItems: 'center',
              justifyContent: 'center',
              fontSize: isMinimized ? '16px' : '24px',
              transition: 'all 0.3s ease',
+             border: '1px solid rgba(255,255,255,0.1)'
            }}>
              <svg width={isMinimized ? "20" : "28"} height={isMinimized ? "20" : "28"} viewBox="0 0 24 24" fill="white">
                <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="1.5" fill="none"/>
@@ -195,8 +202,8 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlistId }) => {
               </div>
               <div style={{
                 fontSize: '12px',
-                opacity: 0.8,
-                color: '#a78bfa',
+                opacity: 0.5,
+                color: '#fff',
               }}>
                 Çalışma Playlist'i
               </div>
@@ -244,8 +251,8 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlistId }) => {
                      <button
              onClick={togglePlay}
              style={{
-               background: 'rgba(255,255,255,0.15)',
-               border: 'none',
+               background: 'rgba(255,255,255,0.1)',
+               border: '1px solid rgba(255,255,255,0.2)',
                color: '#fff',
                fontSize: isMinimized ? '20px' : '24px',
                cursor: 'pointer',
@@ -260,11 +267,11 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlistId }) => {
                height: isMinimized ? '40px' : '50px',
              }}
              onMouseEnter={(e) => {
-               e.currentTarget.style.background = 'rgba(255,255,255,0.25)';
+               e.currentTarget.style.background = 'rgba(255,255,255,0.2)';
                e.currentTarget.style.transform = 'scale(1.05)';
              }}
              onMouseLeave={(e) => {
-               e.currentTarget.style.background = 'rgba(255,255,255,0.15)';
+               e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
                e.currentTarget.style.transform = 'scale(1)';
              }}
            >

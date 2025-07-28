@@ -6,7 +6,10 @@ import { MusicPlayer } from "./components/MusicPlayer";
 import { PomodoroTimer } from "./components/PomodoroTimer";
 import { NotesArea } from "./components/NotesArea";
 import { BadgesArea } from "./components/BadgesArea";
+import { StudyMaterial } from "./components/StudyMaterial"; // **YENİ**: StudyMaterial import
+import { ragService, type RAGContext } from "./services/ragService";
 import './App.css';
+import { Html } from '@react-three/drei';
 
 const CAMERA_PRESETS = {
   karsisina: {
@@ -218,6 +221,7 @@ function App() {
   const [sessionImage, setSessionImage] = React.useState<string>("");
   const [loading, setLoading] = React.useState(false);
   const [questionsJson, setQuestionsJson] = React.useState<QuestionsJson | null>(null);
+  const [ragContext, setRagContext] = React.useState<RAGContext | null>(null);
   const [buddyResponse, setBuddyResponse] = React.useState<BuddyResponse | null>(null);
   const [showBuddyQuestion, setShowBuddyQuestion] = React.useState(false);
   const [sceneReady, setSceneReady] = React.useState(false);
@@ -539,7 +543,10 @@ function App() {
     setIsBreakTime(newIsBreakTime);
   }, []);
 
-  const handleSessionStart = (imageBase64: string, studyMinutes: number, breakMinutes: number) => {
+  // **YENİ**: İlk materyal için state
+  const [firstMaterial, setFirstMaterial] = React.useState<string | null>(null);
+
+  const handleSessionStart = (imageBase64: string, studyMinutes: number, breakMinutes: number, ragContextData?: RAGContext) => {
     setSessionImage(imageBase64);
     setStudyDuration(studyMinutes);
     setBreakDuration(breakMinutes);
@@ -558,8 +565,17 @@ function App() {
     setInitialQuestionAsked(false); // İlk soru flag'ini sıfırla
     setWaitingForUserResponse(false); // Yanıt bekleme flag'ini sıfırla
     shouldAskNewQuestionRef.current = false;
+    // **YENİ**: Duplicate kontrol ref'lerini temizle
+    lastTTSQuestionRef.current = "";
+    lastShownQuestionRef.current = "";
+    // **YENİ**: İlk materyali kaydet
+    setFirstMaterial(imageBase64);
+    setRagContext(ragContextData || null);
     console.log("[DEBUG] handleSessionStart çağrıldı, imageBase64 uzunluğu:", imageBase64.length);
     console.log("[DEBUG] Pomodoro ayarları - Ders:", studyMinutes, "dk, Mola:", breakMinutes, "dk");
+    if (ragContextData) {
+      console.log("[DEBUG] RAG Context yüklendi, toplam sayfa:", ragContextData.totalPages);
+    }
   };
 
   // Pozisyon seçildiğinde session'ı başlat
@@ -591,10 +607,17 @@ function App() {
       }
       try {
         const base64Data = sessionImage.replace(/^data:image\/(png|jpeg|jpg);base64,/, "");
+        
+        // RAG context varsa prompt'u zenginleştir
+        let enhancedPrompt = OCR_PROMPT;
+        if (ragContext) {
+          enhancedPrompt = await ragService.enhancePromptWithRAG(OCR_PROMPT, ragContext);
+        }
+        
         const body = JSON.stringify({
           contents: [
             { role: "user", parts: [
-              { text: OCR_PROMPT },
+              { text: enhancedPrompt },
               { inline_data: { mime_type: "image/png", data: base64Data } }
             ]}
           ]
@@ -626,7 +649,7 @@ function App() {
       setLoading(true);
       runGeminiOCR();
     }
-  }, [sessionStarted, sessionImage]);
+  }, [sessionStarted, sessionImage, ragContext]);
 
   // **YENİ**: Mikrofon iznini ön-yükleme (ilk kullanım gecikme sorunu için)
   const prewarmMicrophone = React.useCallback(async () => {
@@ -752,10 +775,16 @@ function App() {
         past_conversations: pastConversations // Geçmiş konuşmaları da gönder
       };
       
+      // RAG context varsa prompt'u zenginleştir
+      let enhancedPrompt = BUDDY_PROMPT;
+      if (ragContext) {
+        enhancedPrompt = await ragService.enhancePromptWithRAG(BUDDY_PROMPT, ragContext);
+      }
+      
       const body = JSON.stringify({
         contents: [
           { role: "user", parts: [
-            { text: BUDDY_PROMPT },
+            { text: enhancedPrompt },
             { text: JSON.stringify(requestData) }
           ]}
         ]
@@ -776,6 +805,13 @@ function App() {
       }
       
       console.log("🤖 Buddy response geldi:", parsed);
+      
+      // **YENİ**: Duplicate kontrolü - aynı soru tekrar set edilmesin
+      if (parsed && parsed.ai_question && lastShownQuestionRef.current === parsed.ai_question) {
+        console.log("🚫 Duplicate buddy response engellendi:", parsed.ai_question.substring(0, 50) + "...");
+        return; // Duplicate ise set etme
+      }
+      
       setBuddyResponse(parsed);
       
       // **DÜZELTME**: Buddy prompt gönderildikten sonra flag'i sıfırla
@@ -998,12 +1034,17 @@ function App() {
       // **DÜZELTME**: Ders materyali ile birlikte konuşma geçmişini gönder
       let enhancedPrompt = CONVERSATION_PROMPT;
       
-      // Ders materyali bilgisini ekle
-      if (questionsJson && questionsJson.questions) {
-        enhancedPrompt += `\n\nDERS MATERYALİ SORULARI:\n`;
-        questionsJson.questions.forEach((q, index) => {
-          enhancedPrompt += `Soru ${q.question_number}: ${q.question_text}\n`;
-        });
+      // RAG context varsa prompt'u zenginleştir
+      if (ragContext) {
+        enhancedPrompt = await ragService.enhancePromptWithRAG(CONVERSATION_PROMPT, ragContext, userText);
+      } else {
+        // Eski yöntem - sadece soruları ekle
+        if (questionsJson && questionsJson.questions) {
+          enhancedPrompt += `\n\nDERS MATERYALİ SORULARI:\n`;
+          questionsJson.questions.forEach((q, index) => {
+            enhancedPrompt += `Soru ${q.question_number}: ${q.question_text}\n`;
+          });
+        }
       }
       
       enhancedPrompt += "\n\nCONVERSATION HISTORY:\n" + newHistory.map(entry => 
@@ -1175,6 +1216,8 @@ function App() {
 
   // TTS için önceki soru tracking
   const lastTTSQuestionRef = React.useRef<string>("");
+  // **YENİ**: Duplicate soru kontrolü için
+  const lastShownQuestionRef = React.useRef<string>("");
 
   // **DÜZELTME**: Normal buddy soruları için TTS (sadece delay ile gelen sorular, duplicate kontrolü ile)
   React.useEffect(() => {
@@ -1184,15 +1227,22 @@ function App() {
         buddyResponse.target_question_number !== "devam" &&
         showBuddyQuestion &&
         lastTTSQuestionRef.current !== buddyResponse.ai_question && // Duplicate kontrolü
+        lastShownQuestionRef.current !== buddyResponse.ai_question && // **YENİ**: Gösterilen soru kontrolü
         !isPlayingPomodoroTTS) { // Pomodoro TTS çalarken normal TTS'i blokla
       
       console.log("🎵 Normal buddy sorusu için TTS anında başlatılıyor:", buddyResponse.ai_question.substring(0, 50) + "...");
       lastTTSQuestionRef.current = buddyResponse.ai_question; // Son soruyu kaydet
+      lastShownQuestionRef.current = buddyResponse.ai_question; // **YENİ**: Gösterilen soruyu kaydet
       playTTSImmediately(buddyResponse.ai_question);
       
       // **NOT**: Chat'e ekleme delay effect'inde yapılıyor, duplicate önlemek için burada kaldırıldı
     } else if (isPlayingPomodoroTTS) {
       console.log("🚫 Pomodoro TTS çalıyor, normal buddy TTS bloklandı");
+    } else if (buddyResponse && buddyResponse.ai_question && lastShownQuestionRef.current === buddyResponse.ai_question) {
+      console.log("🚫 Duplicate soru engellendi:", buddyResponse.ai_question.substring(0, 50) + "...");
+      // **YENİ**: Duplicate soru tespit edildiğinde buddyResponse'u temizle
+      setBuddyResponse(null);
+      setShowBuddyQuestion(false);
     }
   }, [buddyResponse, showBuddyQuestion, addChatMessage, isPlayingPomodoroTTS]);
 
@@ -1391,12 +1441,17 @@ function App() {
 
 DERS MATERYALİ:`;
 
-      // Ders materyali sorularını ekle
-      if (questionsJson && questionsJson.questions) {
-        contextualPrompt += `\nElinde şu sorular var:\n`;
-        questionsJson.questions.forEach((q, index) => {
-          contextualPrompt += `${index + 1}. Soru ${q.question_number}: ${q.question_text}\n`;
-        });
+      // RAG context varsa prompt'u zenginleştir
+      if (ragContext) {
+        contextualPrompt = await ragService.enhancePromptWithRAG(contextualPrompt, ragContext, userText);
+      } else {
+        // Eski yöntem - sadece soruları ekle
+        if (questionsJson && questionsJson.questions) {
+          contextualPrompt += `\nElinde şu sorular var:\n`;
+          questionsJson.questions.forEach((q, index) => {
+            contextualPrompt += `${index + 1}. Soru ${q.question_number}: ${q.question_text}\n`;
+          });
+        }
       }
 
       // Şu anki buddy sorusunu ekle
@@ -1559,6 +1614,14 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
       }
     };
   }, [sessionStarted, sceneReady, questionsJson, lastMicrophoneActivity, showBuddyQuestion, isRecording, userRecording, isProcessingResponse, isUserQuestionMode, buddyCyclePaused, runBuddyPrompt]);
+
+  // **YENİ**: Music player minimize durumu
+  const [isMusicPlayerMinimized, setIsMusicPlayerMinimized] = React.useState(false);
+
+  // **YENİ**: Music player minimize durumu değiştiğinde chat panel yüksekliğini güncelle
+  const handleMusicPlayerMinimizeChange = React.useCallback((isMinimized: boolean) => {
+    setIsMusicPlayerMinimized(isMinimized);
+  }, []);
 
   if (!sessionStarted && !showPositionSelector) {
     return <Lobby handleSessionStart={handleSessionStart} />;
@@ -1760,10 +1823,10 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
         top: 0,
         left: isChatPanelOpen ? 0 : -400,
         width: 400,
-        height: "100vh",
-        background: "rgba(35, 35, 74, 0.95)",
-        backdropFilter: "blur(10px)",
-        borderRight: "1px solid rgba(124, 58, 237, 0.3)",
+        height: `calc(100vh - ${isMusicPlayerMinimized ? 60 : 100}px)`, // **YENİ**: Music player minimize durumuna göre yükseklik
+        background: "rgba(0,0,0,0.6)",
+        backdropFilter: "blur(8px)",
+        borderRight: "1px solid rgba(255,255,255,0.1)",
         zIndex: 2000,
         transition: "left 0.3s ease-in-out",
         display: "flex",
@@ -1771,7 +1834,7 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
       }}>
         {/* Chat Panel Header */}
         <div style={{
-          background: "rgba(124, 58, 237, 0.8)",
+          background: "rgba(0,0,0,0.8)",
           color: "#fff",
           padding: "16px 20px",
           fontSize: 18,
@@ -1804,7 +1867,7 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
         {/* Tab Bar */}
         <div style={{
           display: "flex",
-          background: "rgba(0,0,0,0.2)",
+          background: "rgba(0,0,0,0.3)",
           borderBottom: "1px solid rgba(255,255,255,0.1)"
         }}>
           <button
@@ -1812,9 +1875,9 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
             style={{
               flex: 1,
               padding: "12px 16px",
-              background: activeTab === 'chat' ? "rgba(124, 58, 237, 0.3)" : "transparent",
+              background: activeTab === 'chat' ? "rgba(255,255,255,0.1)" : "transparent",
               border: "none",
-              color: activeTab === 'chat' ? "#fff" : "#a78bfa",
+              color: activeTab === 'chat' ? "#fff" : "rgba(255,255,255,0.7)",
               fontSize: 14,
               fontWeight: 600,
               cursor: "pointer",
@@ -1823,7 +1886,7 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
               alignItems: "center",
               justifyContent: "center",
               gap: "8px",
-              borderBottom: activeTab === 'chat' ? "2px solid #7c3aed" : "2px solid transparent"
+              borderBottom: activeTab === 'chat' ? "2px solid #fff" : "2px solid transparent"
             }}
             onMouseEnter={(e) => {
               if (activeTab !== 'chat') {
@@ -1834,7 +1897,7 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
             onMouseLeave={(e) => {
               if (activeTab !== 'chat') {
                 e.currentTarget.style.background = "transparent";
-                e.currentTarget.style.color = "#a78bfa";
+                e.currentTarget.style.color = "rgba(255,255,255,0.7)";
               }
             }}
           >
@@ -1846,9 +1909,9 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
             style={{
               flex: 1,
               padding: "12px 16px",
-              background: activeTab === 'notes' ? "rgba(124, 58, 237, 0.3)" : "transparent",
+              background: activeTab === 'notes' ? "rgba(255,255,255,0.1)" : "transparent",
               border: "none",
-              color: activeTab === 'notes' ? "#fff" : "#a78bfa",
+              color: activeTab === 'notes' ? "#fff" : "rgba(255,255,255,0.7)",
               fontSize: 14,
               fontWeight: 600,
               cursor: "pointer",
@@ -1857,7 +1920,7 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
               alignItems: "center",
               justifyContent: "center",
               gap: "8px",
-              borderBottom: activeTab === 'notes' ? "2px solid #7c3aed" : "2px solid transparent"
+              borderBottom: activeTab === 'notes' ? "2px solid #fff" : "2px solid transparent"
             }}
             onMouseEnter={(e) => {
               if (activeTab !== 'notes') {
@@ -1868,7 +1931,7 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
             onMouseLeave={(e) => {
               if (activeTab !== 'notes') {
                 e.currentTarget.style.background = "transparent";
-                e.currentTarget.style.color = "#a78bfa";
+                e.currentTarget.style.color = "rgba(255,255,255,0.7)";
               }
             }}
           >
@@ -1880,9 +1943,9 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
             style={{
               flex: 1,
               padding: "12px 16px",
-              background: activeTab === 'badges' ? "rgba(124, 58, 237, 0.3)" : "transparent",
+              background: activeTab === 'badges' ? "rgba(255,255,255,0.1)" : "transparent",
               border: "none",
-              color: activeTab === 'badges' ? "#fff" : "#a78bfa",
+              color: activeTab === 'badges' ? "#fff" : "rgba(255,255,255,0.7)",
               fontSize: 14,
               fontWeight: 600,
               cursor: "pointer",
@@ -1891,7 +1954,7 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
               alignItems: "center",
               justifyContent: "center",
               gap: "8px",
-              borderBottom: activeTab === 'badges' ? "2px solid #7c3aed" : "2px solid transparent"
+              borderBottom: activeTab === 'badges' ? "2px solid #fff" : "2px solid transparent"
             }}
             onMouseEnter={(e) => {
               if (activeTab !== 'badges') {
@@ -1902,7 +1965,7 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
             onMouseLeave={(e) => {
               if (activeTab !== 'badges') {
                 e.currentTarget.style.background = "transparent";
-                e.currentTarget.style.color = "#a78bfa";
+                e.currentTarget.style.color = "rgba(255,255,255,0.7)";
               }
             }}
           >
@@ -2049,12 +2112,13 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
           width: 50,
           height: 50,
           borderRadius: "50%",
-          border: "none",
-          background: "linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)",
+          border: "1px solid rgba(255,255,255,0.2)",
+          background: "rgba(0,0,0,0.6)",
+          backdropFilter: "blur(8px)",
           color: "#fff",
           fontSize: 20,
           cursor: "pointer",
-          boxShadow: "0 4px 20px rgba(124, 58, 237, 0.4)",
+          boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
           zIndex: 2100,
           transition: "all 0.3s ease",
           display: "flex",
@@ -2063,11 +2127,13 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.transform = "scale(1.1)";
-          e.currentTarget.style.boxShadow = "0 6px 24px rgba(124, 58, 237, 0.6)";
+          e.currentTarget.style.background = "rgba(0,0,0,0.8)";
+          e.currentTarget.style.boxShadow = "0 6px 24px rgba(0,0,0,0.4)";
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.transform = "scale(1)";
-          e.currentTarget.style.boxShadow = "0 4px 20px rgba(124, 58, 237, 0.4)";
+          e.currentTarget.style.background = "rgba(0,0,0,0.6)";
+          e.currentTarget.style.boxShadow = "0 4px 20px rgba(0,0,0,0.3)";
         }}
       >
         {isChatPanelOpen ? '←' : '💬'}
@@ -2079,17 +2145,18 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
           onClick={startRecording}
           style={{
             position: "absolute",
-            bottom: 140, // Müzik çalar için yer bırak
+            bottom: isMusicPlayerMinimized ? 60 : 140, // **YENİ**: Music player minimize durumuna göre pozisyon
             left: "50%",
             transform: "translateX(-50%)",
             zIndex: 1100, // Müzik çaların üstünde
             width: 80,
             height: 80,
             borderRadius: "50%",
-            border: "none",
-            background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+            border: "1px solid rgba(255,255,255,0.2)",
+            background: "rgba(0,0,0,0.6)",
+            backdropFilter: "blur(8px)",
             cursor: "pointer",
-            boxShadow: "0 8px 32px rgba(102, 126, 234, 0.4)",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -2097,14 +2164,14 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
             overflow: "hidden"
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = "linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)";
+            e.currentTarget.style.background = "rgba(0,0,0,0.8)";
             e.currentTarget.style.transform = "translateX(-50%) scale(1.1)";
-            e.currentTarget.style.boxShadow = "0 12px 40px rgba(102, 126, 234, 0.6)";
+            e.currentTarget.style.boxShadow = "0 12px 40px rgba(0,0,0,0.4)";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = "linear-gradient(135deg, #667eea 0%, #764ba2 100%)";
+            e.currentTarget.style.background = "rgba(0,0,0,0.6)";
             e.currentTarget.style.transform = "translateX(-50%) scale(1)";
-            e.currentTarget.style.boxShadow = "0 8px 32px rgba(102, 126, 234, 0.4)";
+            e.currentTarget.style.boxShadow = "0 8px 32px rgba(0,0,0,0.3)";
           }}
         >
           <div style={{
@@ -2150,17 +2217,19 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
       {isRecording && (
         <div style={{
           position: "absolute",
-          bottom: 140, // Müzik çalar için yer bırak
+          bottom: isMusicPlayerMinimized ? 60 : 140, // **YENİ**: Music player minimize durumuna göre pozisyon
           left: "50%",
           transform: "translateX(-50%)",
           zIndex: 1100, // Müzik çaların üstünde
-          background: "#dc2626",
+          background: "rgba(0,0,0,0.8)",
+          backdropFilter: "blur(8px)",
           color: "#fff",
           borderRadius: 16,
           padding: "12px 24px",
           fontSize: 16,
           fontWeight: 600,
-          boxShadow: "0 4px 20px rgba(220,38,38,0.3)",
+          boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+          border: "1px solid rgba(255,255,255,0.2)",
           display: "flex",
           alignItems: "center",
           gap: 8
@@ -2215,17 +2284,18 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
           onClick={userRecording ? stopUserRecording : startUserRecording}
           style={{
             position: "absolute",
-            bottom: 140, // Müzik çalar için yer bırak
+            bottom: isMusicPlayerMinimized ? 60 : 140, // **YENİ**: Music player minimize durumuna göre pozisyon
             left: "50%",
             transform: "translateX(-50%)",
             zIndex: 1100, // Müzik çaların üstünde
             width: 80,
             height: 80,
             borderRadius: "50%",
-            border: "none",
-            background: userRecording ? "linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)" : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+            border: "1px solid rgba(255,255,255,0.2)",
+            background: "rgba(0,0,0,0.6)",
+            backdropFilter: "blur(8px)",
             cursor: "pointer",
-            boxShadow: userRecording ? "0 8px 32px rgba(231, 76, 60, 0.4)" : "0 8px 32px rgba(102, 126, 234, 0.4)",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -2233,14 +2303,14 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
             overflow: "hidden"
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = userRecording ? "linear-gradient(135deg, #c0392b 0%, #e74c3c 100%)" : "linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)";
+            e.currentTarget.style.background = "rgba(0,0,0,0.8)";
             e.currentTarget.style.transform = "translateX(-50%) scale(1.1)";
-            e.currentTarget.style.boxShadow = userRecording ? "0 12px 40px rgba(231, 76, 60, 0.6)" : "0 12px 40px rgba(102, 126, 234, 0.6)";
+            e.currentTarget.style.boxShadow = "0 12px 40px rgba(0,0,0,0.4)";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = userRecording ? "linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)" : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)";
+            e.currentTarget.style.background = "rgba(0,0,0,0.6)";
             e.currentTarget.style.transform = "translateX(-50%) scale(1)";
-            e.currentTarget.style.boxShadow = userRecording ? "0 8px 32px rgba(231, 76, 60, 0.4)" : "0 8px 32px rgba(102, 126, 234, 0.4)";
+            e.currentTarget.style.boxShadow = "0 8px 32px rgba(0,0,0,0.3)";
           }}
         >
           <div style={{
@@ -2280,18 +2350,19 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
           onClick={cancelUserRecording}
           style={{
             position: "absolute",
-            bottom: 230, // Müzik çalar + mikrofon butonu için yer bırak
+            bottom: isMusicPlayerMinimized ? 150 : 230, // **YENİ**: Music player minimize durumuna göre pozisyon
             left: "50%",
             transform: "translateX(-50%)",
             zIndex: 1100, // Müzik çaların üstünde
             padding: "12px 32px",
             borderRadius: 16,
-            border: "none",
-            background: "#e74c3c",
+            border: "1px solid rgba(255,255,255,0.2)",
+            background: "rgba(0,0,0,0.6)",
+            backdropFilter: "blur(8px)",
             color: "#fff",
             fontWeight: 600,
             fontSize: 18,
-            boxShadow: "0 4px 20px rgba(231,76,60,0.3)",
+            boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
             cursor: "pointer"
           }}
         >
@@ -2417,23 +2488,44 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
       <Canvas camera={{ position: camera.position, fov: 60 }}>
         <color attach="background" args={['#ffffff']} />
         <Experience headTurnY={headTurn} cameraTarget={camera.target} cameraPosition={camera.position} />
+        
+        {/* **YENİ**: Çalışma Materyali - Bilgisayar ekranında göster */}
+        {sessionStarted && sceneReady && firstMaterial && (
+          <StudyMaterial 
+            materialData={firstMaterial}
+            position={[4.1, -0.4, 3.7]} // Buddy'nin önünde, biraz yukarıda
+            rotation={[0.1, 0, 0]} // Düz bakış
+            distanceFactor={1.9} // **YENİ**: Distance factor - materyalin boyutunu ayarla
+          />
+        )}
+        
+        {/* Pomodoro Timer'ı 3D sahnede, pencerenin solundaki duvara yakın bir pozisyona yerleştiriyoruz */}
+        {sessionStarted && sceneReady && (
+          <Html
+            position={[4, 2.8, 2.3]}
+            rotation={[0, -Math.PI/2, 0]}
+            transform
+            distanceFactor={2.4}
+            style={{ pointerEvents: 'auto' }}
+          >
+            <PomodoroTimer
+              studyDuration={studyDuration}
+              breakDuration={breakDuration}
+              isBreakTime={isBreakTime}
+              onModeChange={handlePomodoroModeChange}
+              onBreakStart={handleBreakStart}
+              onStudyStart={handleStudyStart}
+              isActive={pomodoroActive}
+            />
+          </Html>
+        )}
       </Canvas>
 
       {/* Müzik Çalar - Session başladığında ve sahne yüklendiğinde göster */}
       {sessionStarted && sceneReady && (
-        <MusicPlayer playlistId="PLkDQC8YWp9j3jNgtgDZ2rIqaVNO4LyQZV" />
-      )}
-
-      {/* Pomodoro Timer - Session başladığında göster */}
-      {sessionStarted && sceneReady && (
-        <PomodoroTimer
-          studyDuration={studyDuration}
-          breakDuration={breakDuration}
-          isBreakTime={isBreakTime}
-          onModeChange={handlePomodoroModeChange}
-          onBreakStart={handleBreakStart}
-          onStudyStart={handleStudyStart}
-          isActive={pomodoroActive}
+        <MusicPlayer 
+          playlistId="PLkDQC8YWp9j3jNgtgDZ2rIqaVNO4LyQZV" 
+          onMinimizeChange={handleMusicPlayerMinimizeChange}
         />
       )}
     </>

@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
+import FlipClockCountdown from '@leenguyen/react-flip-clock-countdown';
+import '@leenguyen/react-flip-clock-countdown/dist/index.css';
 
 interface PomodoroTimerProps {
   studyDuration: number; // Dakika
@@ -19,39 +21,30 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
   onStudyStart,
   isActive
 }) => {
-  const [timeLeft, setTimeLeft] = useState(() => {
-    return isBreakTime ? breakDuration * 60 : studyDuration * 60;
-  });
+  // Kalan süreyi saniye cinsinden tut
+  const [timeLeft, setTimeLeft] = useState(
+    (isBreakTime ? breakDuration : studyDuration) * 60
+  );
   const [isPaused, setIsPaused] = useState(false);
-  const intervalRef = useRef<number | undefined>(undefined);
 
-  // Moda göre süreyi güncelle
+  // Mod değişince süreyi güncelle
   useEffect(() => {
-    setTimeLeft(isBreakTime ? breakDuration * 60 : studyDuration * 60);
+    setTimeLeft((isBreakTime ? breakDuration : studyDuration) * 60);
   }, [isBreakTime, studyDuration, breakDuration]);
 
   // Timer logic
   useEffect(() => {
-    if (!isActive || isPaused) {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-      return;
-    }
-
-    intervalRef.current = setInterval(() => {
+    if (!isActive || isPaused) return;
+    if (timeLeft <= 0) return;
+    const interval = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
           // Süre bitti
           if (isBreakTime) {
-            // Mola bitti, ders başlasın
-            console.log("⏰ Mola bitti, ders başlıyor!");
             onStudyStart();
             onModeChange(false);
             return studyDuration * 60;
           } else {
-            // Ders bitti, mola başlasın
-            console.log("⏰ Ders bitti, mola başlıyor!");
             onBreakStart();
             onModeChange(true);
             return breakDuration * 60;
@@ -60,26 +53,13 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
         return prev - 1;
       });
     }, 1000);
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, [isActive, isPaused, isBreakTime, studyDuration, breakDuration, onModeChange, onBreakStart, onStudyStart]);
-
-  // Zamanı format etme
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  // Progress yüzdesi
-  const totalDuration = isBreakTime ? breakDuration * 60 : studyDuration * 60;
-  const progress = ((totalDuration - timeLeft) / totalDuration) * 100;
+    return () => clearInterval(interval);
+  }, [isActive, isPaused, isBreakTime, studyDuration, breakDuration, onModeChange, onBreakStart, onStudyStart, timeLeft]);
 
   if (!isActive) return null;
+
+  // FlipClockCountdown için hedef zamanı hesapla
+  const targetTime = Date.now() + timeLeft * 1000;
 
   return (
     <div style={{
@@ -87,99 +67,132 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
       top: '20px',
       right: '20px',
       zIndex: 1200,
-      background: isBreakTime 
-        ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.95) 0%, rgba(5, 150, 105, 0.95) 100%)'
-        : 'linear-gradient(135deg, rgba(124, 58, 237, 0.95) 0%, rgba(99, 102, 241, 0.95) 100%)',
-      backdropFilter: 'blur(10px)',
-      borderRadius: '16px',
-      padding: '16px 20px',
-      boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+      background: 'rgba(0,0,0,0.6)',
+      backdropFilter: 'blur(8px)',
+      borderRadius: '12px',
+      padding: '16px',
+      boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      gap: '8px',
-      minWidth: '140px',
+      minWidth: '120px',
       fontFamily: 'Poppins, Arial, sans-serif',
       color: '#fff',
-      border: '1px solid rgba(255,255,255,0.2)'
+      border: '1px solid rgba(255,255,255,0.1)'
     }}>
-      {/* Mode başlığı */}
       <div style={{
-        fontSize: '12px',
-        fontWeight: 600,
-        opacity: 0.9,
+        fontSize: '10px',
+        fontWeight: 500,
+        opacity: 0.7,
         textAlign: 'center',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '4px'
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px',
+        marginBottom: 8
       }}>
-        {isBreakTime ? '☕ Mola Vakti' : '🕒 Ders Saati'}
+        {isBreakTime ? 'Mola' : 'Ders'}
       </div>
-
-      {/* Süre gösterimi */}
-      <div style={{
-        fontSize: '24px',
-        fontWeight: 700,
-        fontFamily: 'monospace',
-        textShadow: '0 2px 4px rgba(0,0,0,0.2)'
-      }}>
-        {formatTime(timeLeft)}
-      </div>
-
-      {/* Progress bar */}
-      <div style={{
-        width: '100%',
-        height: '4px',
-        background: 'rgba(255,255,255,0.3)',
-        borderRadius: '2px',
-        overflow: 'hidden'
-      }}>
+      {/* Timer Display */}
+      {isPaused ? (
+        // Duraklatılmış durum - Sabit zaman göster
         <div style={{
-          width: `${progress}%`,
-          height: '100%',
-          background: '#fff',
-          borderRadius: '2px',
-          transition: 'width 0.3s ease',
-          boxShadow: '0 0 8px rgba(255,255,255,0.5)'
-        }} />
-      </div>
-
-      {/* Pause/Resume butonu */}
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
+          fontFamily: 'monospace',
+          fontSize: '28px',
+          fontWeight: 600,
+          lineHeight: 1,
+          marginBottom: 8
+        }}>
+          <div style={{
+            width: '32px',
+            height: '40px',
+            background: '#000',
+            borderRadius: '4px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#fff',
+            fontSize: '24px',
+            fontWeight: 600,
+            boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.5)'
+          }}>
+            {Math.floor(timeLeft / 60).toString().padStart(2, '0')}
+          </div>
+          <div style={{
+            fontSize: '20px',
+            opacity: 0.7,
+            margin: '0 2px'
+          }}>
+            :
+          </div>
+          <div style={{
+            width: '32px',
+            height: '40px',
+            background: '#000',
+            borderRadius: '4px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#fff',
+            fontSize: '24px',
+            fontWeight: 600,
+            boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.5)'
+          }}>
+            {(timeLeft % 60).toString().padStart(2, '0')}
+          </div>
+        </div>
+      ) : (
+        // Çalışan durum - FlipClockCountdown
+        <FlipClockCountdown
+          to={targetTime}
+          renderMap={[false, false, true, true]} // Sadece dakika:saniye
+          labels={['', '', '', '']}
+          showLabels={false}
+          showSeparators={true}
+          digitBlockStyle={{
+            background: '#000',
+            color: '#fff',
+            fontSize: '32px',
+            borderRadius: '6px',
+            minWidth: '32px',
+            minHeight: '40px',
+            boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.5)'
+          }}
+          dividerStyle={{ color: '#fff', height: 1 }}
+          separatorStyle={{ color: '#fff', size: '6px' }}
+          duration={0.5}
+          style={{ marginBottom: 8 }}
+          className="pomodoro-flip-clock"
+        />
+      )}
       <button
         onClick={() => setIsPaused(!isPaused)}
         style={{
-          background: 'rgba(255,255,255,0.15)',
-          border: 'none',
+          background: 'rgba(255,255,255,0.1)',
+          border: '1px solid rgba(255,255,255,0.2)',
           color: '#fff',
-          fontSize: '12px',
+          fontSize: '10px',
           cursor: 'pointer',
-          padding: '6px 12px',
-          borderRadius: '8px',
+          padding: '4px 8px',
+          borderRadius: '4px',
           transition: 'all 0.2s ease',
-          fontWeight: 500
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = 'rgba(255,255,255,0.25)';
-          e.currentTarget.style.transform = 'scale(1.05)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = 'rgba(255,255,255,0.15)';
-          e.currentTarget.style.transform = 'scale(1)';
+          fontWeight: 500,
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px',
+          marginBottom: 8
         }}
       >
-        {isPaused ? '▶️ Devam' : '⏸️ Duraklat'}
+        {isPaused ? 'Devam' : 'Duraklat'}
       </button>
-
-      {/* Dakika bilgisi */}
       <div style={{
-        fontSize: '10px',
-        opacity: 0.7,
-        textAlign: 'center'
+        fontSize: '8px',
+        opacity: 0.5,
+        textAlign: 'center',
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px'
       }}>
-        {isBreakTime 
-          ? `${breakDuration} dk mola`
-          : `${studyDuration} dk ders`
-        }
+        {isBreakTime ? `${breakDuration} dk` : `${studyDuration} dk`}
       </div>
     </div>
   );

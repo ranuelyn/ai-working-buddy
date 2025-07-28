@@ -1,1 +1,14 @@
+.pomodoro-flip-clock .flip-clock-divider {
+  filter: blur(4px);
+  opacity: 0.2;
+}
 
+.pomodoro-flip-clock {
+  transform-style: flat !important;
+  backface-visibility: hidden;
+}
+
+.pomodoro-flip-clock * {
+  transform-style: flat !important;
+  backface-visibility: hidden;
+}
