@@ -1,28 +1,44 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { notesService } from '../services/notesService';
 
 export const NotesArea: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const saveTimeoutRef = useRef<number | undefined>(undefined);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const { user } = useAuth();
 
-  // LocalStorage'dan notları yükle
+  // Supabase'den notları yükle
   useEffect(() => {
-    const savedNotes = localStorage.getItem('ai-buddy-notes');
-    const savedTime = localStorage.getItem('ai-buddy-notes-timestamp');
-    
-    if (savedNotes) {
-      setNotes(savedNotes);
-    }
-    
-    if (savedTime) {
-      setLastSaved(new Date(parseInt(savedTime)));
-    }
-  }, []);
+    const loadNotes = async () => {
+      if (!user) {
+        setIsLoading(false);
+        return;
+      }
 
-  // Notları localStorage'a kaydet (debounced)
+      setIsLoading(true);
+      const { notes: userNotes, error } = await notesService.getUserNotes(user.id);
+      
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
+        console.error('Notlar yüklenirken hata:', error);
+      } else if (userNotes) {
+        setNotes(userNotes.content);
+        setLastSaved(new Date(userNotes.updated_at));
+      }
+      
+      setIsLoading(false);
+    };
+
+    loadNotes();
+  }, [user]);
+
+  // Notları Supabase'e kaydet (debounced)
   const saveNotes = (noteText: string) => {
+    if (!user) return;
+    
     setIsSaving(true);
     
     // Önceki timeout'u temizle
@@ -31,12 +47,17 @@ export const NotesArea: React.FC = () => {
     }
     
     // 1 saniye sonra kaydet
-    saveTimeoutRef.current = setTimeout(() => {
-      localStorage.setItem('ai-buddy-notes', noteText);
-      localStorage.setItem('ai-buddy-notes-timestamp', Date.now().toString());
-      setLastSaved(new Date());
+    saveTimeoutRef.current = setTimeout(async () => {
+      const { error } = await notesService.saveUserNotes(user.id, noteText);
+      
+      if (error) {
+        console.error('Notlar kaydedilirken hata:', error);
+      } else {
+        setLastSaved(new Date());
+        console.log('📝 Notlar kaydedildi');
+      }
+      
       setIsSaving(false);
-      console.log('📝 Notlar kaydedildi');
     }, 1000);
   };
 
@@ -137,14 +158,14 @@ export const NotesArea: React.FC = () => {
         ref={textareaRef}
         value={notes}
         onChange={handleNotesChange}
-        placeholder="Buraya notlarınızı yazabilirsiniz...
-
-• Önemli konuları not edin
-• Çalışma planınızı yazın  
-• Sorular ve cevaplar
-• Hatırlatmalar
-
-Yazdığınız her şey otomatik olarak kaydedilir."
+        disabled={isLoading || !user}
+        placeholder={
+          isLoading 
+            ? "Notlarınız yükleniyor..." 
+            : !user 
+              ? "Notları kullanmak için giriş yapın..."
+              : "Buraya notlarınızı yazabilirsiniz...\n\n• Önemli konuları not edin\n• Çalışma planınızı yazın\n• Sorular ve cevaplar\n• Hatırlatmalar\n\nYazdığınız her şey otomatik olarak kaydedilir."
+        }
         style={{
           flex: 1,
           minHeight: '200px',

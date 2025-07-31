@@ -2,12 +2,16 @@ import * as React from "react";
 import { Canvas } from "@react-three/fiber";
 import { Experience } from "./components/Experience";
 import { Lobby } from "./components/Lobby";
+import { Login } from "./components/Login";
+import { Register } from "./components/Register";
 import { MusicPlayer } from "./components/MusicPlayer";
 import { PomodoroTimer } from "./components/PomodoroTimer";
 import { NotesArea } from "./components/NotesArea";
 import { BadgesArea } from "./components/BadgesArea";
 import { StudyMaterial } from "./components/StudyMaterial"; // **YENİ**: StudyMaterial import
+import { Profile } from "./components/Profile";
 import { ragService, type RAGContext } from "./services/ragService";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import './App.css';
 import { Html } from '@react-three/drei';
 
@@ -214,7 +218,7 @@ AI: "Haa, anladım! Yani aslında ters mantık kuracağız. Çok mantıklı, te�
 
 Now, process the conversation history I will provide.`;
 
-function App() {
+function AuthenticatedApp() {
   const [headTurn, setHeadTurn] = React.useState(0);
   const [camera, setCamera] = React.useState<CameraPreset>(CAMERA_PRESETS.karsisina);
   const [sessionStarted, setSessionStarted] = React.useState(false);
@@ -264,6 +268,9 @@ function App() {
 
   // **YENİ**: Rozet sistemi state'leri
   const [earnedBadges, setEarnedBadges] = React.useState(0);
+
+  // **YENİ**: Profile modal state'i
+  const [showProfile, setShowProfile] = React.useState(false);
 
   // LocalStorage'dan rozet sayısını yükle
   React.useEffect(() => {
@@ -1849,19 +1856,43 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
             {activeTab === 'notes' && '📝 Notlarım'}
             {activeTab === 'badges' && '🏆 Rozetlerim'}
           </span>
-          <button
-            onClick={() => setIsChatPanelOpen(false)}
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "#fff",
-              fontSize: 20,
-              cursor: "pointer",
-              padding: "4px 8px"
-            }}
-          >
-            ×
-          </button>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              onClick={() => setShowProfile(true)}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#a78bfa",
+                fontSize: 18,
+                cursor: "pointer",
+                padding: "4px 8px",
+                borderRadius: "4px",
+                transition: "all 0.2s ease"
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "rgba(167, 139, 250, 0.1)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+              }}
+              title="Profil"
+            >
+              👤
+            </button>
+            <button
+              onClick={() => setIsChatPanelOpen(false)}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#fff",
+                fontSize: 20,
+                cursor: "pointer",
+                padding: "4px 8px"
+              }}
+            >
+              ×
+            </button>
+          </div>
         </div>
 
         {/* Tab Bar */}
@@ -2528,8 +2559,92 @@ Bu soruya ders materyalini ve önceki konuşmayı dikkate alarak samimi bir öğ
           onMinimizeChange={handleMusicPlayerMinimizeChange}
         />
       )}
+
+      {/* Profile Modal */}
+      {showProfile && (
+        <Profile onClose={() => setShowProfile(false)} />
+      )}
     </>
   );
+}
+
+// Authentication Pages Component
+const AuthPages: React.FC = () => {
+  const [isLogin, setIsLogin] = React.useState(true)
+
+  const handleSwitchToRegister = () => setIsLogin(false)
+  const handleSwitchToLogin = () => setIsLogin(true)
+  const handleRegisterSuccess = () => setIsLogin(true)
+
+  if (isLogin) {
+    return <Login onSwitchToRegister={handleSwitchToRegister} />
+  } else {
+    return (
+      <Register 
+        onSwitchToLogin={handleSwitchToLogin}
+        onRegisterSuccess={handleRegisterSuccess}
+      />
+    )
+  }
+}
+
+// Loading Component
+const LoadingScreen: React.FC = () => (
+  <div style={{
+    minHeight: "100vh",
+    minWidth: "100vw",
+    background: "#171720",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#fff",
+    fontFamily: "Poppins, Arial, Helvetica, sans-serif",
+    fontSize: 24,
+    letterSpacing: 0.2,
+    fontWeight: 600
+  }}>
+    <div style={{
+      background: "#23234a",
+      borderRadius: 18,
+      padding: "48px 40px",
+      boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center"
+    }}>
+      <div className="lobby-avatar lobby-avatar-glow" style={{ width: 120, height: 120, marginBottom: 32 }}>
+        <img src="/assets/character_smiling.png" alt="AI Buddy" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover", objectPosition: "center 40%" }} />
+      </div>
+      <div style={{ marginBottom: 18 }}>AI Buddy Yükleniyor...</div>
+      <div className="lobby-loading-spinner" style={{ width: 48, height: 48, border: "5px solid #7c3aed", borderTop: "5px solid #23234a", borderRadius: "50%", animation: "spin 1.1s linear infinite" }} />
+    </div>
+    <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+  </div>
+)
+
+// Main App Component with Authentication
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  )
+}
+
+// App Content with Auth Logic
+const AppContent: React.FC = () => {
+  const { user, loading } = useAuth()
+
+  if (loading) {
+    return <LoadingScreen />
+  }
+
+  if (!user) {
+    return <AuthPages />
+  }
+
+  return <AuthenticatedApp />
 }
 
 export default App; 

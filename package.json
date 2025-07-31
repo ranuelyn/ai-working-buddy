@@ -14,6 +14,7 @@
     "@leenguyen/react-flip-clock-countdown": "^1.7.1",
     "@react-three/drei": "^10.6.0",
     "@react-three/fiber": "^9.2.0",
+    "@supabase/supabase-js": "^2.53.0",
     "@types/three": "^0.178.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

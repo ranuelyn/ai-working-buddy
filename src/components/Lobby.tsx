@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import type { ChangeEvent } from "react";
 import "./Lobby.css";
 import { ragService, type RAGContext } from "../services/ragService";
+import { useAuth } from "../contexts/AuthContext";
+import { Profile } from "./Profile";
 
 // Tüm metinler için Poppins fontunu uygula
 // Ekstra className'ler ile spacing ve modern efektler için alan açıyorum
@@ -25,10 +27,13 @@ export const Lobby: React.FC<LobbyProps> = ({ handleSessionStart }) => {
   const [materialFiles, setMaterialFiles] = useState<FileData[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [ragContext, setRagContext] = useState<RAGContext | null>(null);
+  const [showProfile, setShowProfile] = useState(false);
   
   // Pomodoro ayarları
   const [studyDuration, setStudyDuration] = useState(25); // Dakika
   const [breakDuration, setBreakDuration] = useState(5); // Dakika
+  
+  const { user } = useAuth();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setTopic(e.target.value);
@@ -180,8 +185,46 @@ export const Lobby: React.FC<LobbyProps> = ({ handleSessionStart }) => {
     <div className="lobby-container poppins-font" style={{
       height: '100vh',
       overflowY: 'auto',
-      overflowX: 'hidden'
+      overflowX: 'hidden',
+      position: 'relative'
     }}>
+      {/* Profile Button */}
+      {user && (
+        <button
+          onClick={() => setShowProfile(true)}
+          style={{
+            position: 'absolute',
+            top: '20px',
+            right: '20px',
+            width: '50px',
+            height: '50px',
+            borderRadius: '50%',
+            border: '2px solid rgba(124, 58, 237, 0.3)',
+            background: 'rgba(124, 58, 237, 0.1)',
+            backdropFilter: 'blur(8px)',
+            color: '#7c3aed',
+            fontSize: '20px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'all 0.2s ease',
+            zIndex: 1000
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(124, 58, 237, 0.2)';
+            e.currentTarget.style.transform = 'scale(1.1)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(124, 58, 237, 0.1)';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          title="Profil"
+        >
+          👤
+        </button>
+      )}
+
       <img
         src="/assets/character_smiling.png"
         alt="Karakter"
@@ -378,6 +421,11 @@ export const Lobby: React.FC<LobbyProps> = ({ handleSessionStart }) => {
       >
         {isProcessing ? "İşleniyor..." : "Haydi Başlayalım!"}
       </button>
+
+      {/* Profile Modal */}
+      {showProfile && (
+        <Profile onClose={() => setShowProfile(false)} />
+      )}
     </div>
   );
 }; 

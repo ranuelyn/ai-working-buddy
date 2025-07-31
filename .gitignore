@@ -24,4 +24,4 @@ dist-ssr
 *.sw?
 
 # Large assets (excluded due to size)
-public/assets/
+/assets
