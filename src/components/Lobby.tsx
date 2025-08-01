@@ -26,6 +26,7 @@ export const Lobby: React.FC<LobbyProps> = ({ handleSessionStart }) => {
   const [inputFocused, setInputFocused] = useState(false);
   const [materialFiles, setMaterialFiles] = useState<FileData[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [ragContext, setRagContext] = useState<RAGContext | null>(null);
   const [showProfile, setShowProfile] = useState(false);
   
@@ -73,7 +74,7 @@ export const Lobby: React.FC<LobbyProps> = ({ handleSessionStart }) => {
       reader.onload = async (e) => {
         try {
           // PDF.js kullanarak PDF'i yükle
-          // @ts-ignore
+          // @ts-expect-error PDF.js global olarak tanımlı
           const pdfjsLib = window.pdfjsLib;
           if (!pdfjsLib) {
             throw new Error('PDF.js kütüphanesi yüklenemedi');

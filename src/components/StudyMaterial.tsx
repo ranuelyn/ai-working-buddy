@@ -13,7 +13,6 @@ export const StudyMaterial: React.FC<StudyMaterialProps> = ({
   materialData, 
   position = [0, 0, 0], 
   rotation = [0, 0, 0], 
-  scale = [1, 1, 1],
   distanceFactor = 1 // **YENİ**: Default distance factor
 }) => {
   if (!materialData) return null;

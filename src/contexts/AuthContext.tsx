@@ -13,6 +13,7 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
   const context = useContext(AuthContext)
   if (context === undefined) {
@@ -86,7 +87,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         } : null, 
         error: null 
       }
-    } catch (error) {
+    } catch {
       return { user: null, error: { message: 'Giriş yapılırken bir hata oluştu' } }
     }
   }
@@ -110,7 +111,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         } : null, 
         error: null 
       }
-    } catch (error) {
+    } catch {
       return { user: null, error: { message: 'Hesap oluşturulurken bir hata oluştu' } }
     }
   }

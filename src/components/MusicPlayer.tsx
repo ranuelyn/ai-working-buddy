@@ -5,9 +5,25 @@ interface MusicPlayerProps {
   onMinimizeChange?: (isMinimized: boolean) => void; // **YENİ**: Minimize durumu callback'i
 }
 
+interface YouTubePlayer {
+  destroy: () => void;
+  getVideoData: () => { title: string };
+  pauseVideo: () => void;
+  playVideo: () => void;
+  setVolume: (volume: number) => void;
+  nextVideo: () => void;
+  previousVideo: () => void;
+}
+
 declare global {
   interface Window {
-    YT: any;
+    YT: {
+      Player: new (elementId: string, config: unknown) => YouTubePlayer;
+      PlayerState: {
+        PLAYING: number;
+        PAUSED: number;
+      };
+    };
     onYouTubeIframeAPIReady: () => void;
   }
 }
@@ -17,8 +33,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlistId, onMinimize
   const [volume, setVolume] = useState(30); // Başlangıç ses seviyesi %30
   const [isMinimized, setIsMinimized] = useState(false);
   const [currentTitle, setCurrentTitle] = useState("Çalışma Müzikleri");
-  const [playerReady, setPlayerReady] = useState(false);
-  const playerRef = useRef<any>(null);
+  const playerRef = useRef<YouTubePlayer | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // **YENİ**: Minimize durumu değiştiğinde parent'a bildir
@@ -69,16 +84,15 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlistId, onMinimize
         showinfo: 0,
       },
       events: {
-        onReady: (event: any) => {
+        onReady: (event: { target: YouTubePlayer }) => {
           console.log('YouTube Player Ready');
           event.target.setVolume(volume);
-          setPlayerReady(true);
           // Player hazır olduğunda otomatik başlat
           setTimeout(() => {
             event.target.playVideo();
           }, 1000);
         },
-        onStateChange: (event: any) => {
+        onStateChange: (event: { data: number }) => {
           if (event.data === window.YT.PlayerState.PLAYING) {
             setIsPlaying(true);
             updateCurrentTitle();
@@ -97,7 +111,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlistId, onMinimize
         if (videoData && videoData.title) {
           setCurrentTitle(videoData.title);
         }
-      } catch (error) {
+      } catch {
         console.log('Video bilgisi alınamadı');
       }
     }

@@ -10,7 +10,7 @@ export type UserNote = {
 
 class NotesService {
   // Kullanıcının notlarını getir
-  async getUserNotes(userId: string): Promise<{ notes: UserNote | null; error: any }> {
+  async getUserNotes(userId: string): Promise<{ notes: UserNote | null; error: unknown }> {
     try {
       const { data: notes, error } = await supabase
         .from('user_notes')
@@ -25,7 +25,7 @@ class NotesService {
   }
 
   // Notları oluştur veya güncelle (upsert)
-  async saveUserNotes(userId: string, content: string): Promise<{ notes: UserNote | null; error: any }> {
+  async saveUserNotes(userId: string, content: string): Promise<{ notes: UserNote | null; error: unknown }> {
     try {
       const { data: notes, error } = await supabase
         .from('user_notes')
@@ -46,7 +46,7 @@ class NotesService {
   }
 
   // Notları sil
-  async deleteUserNotes(userId: string): Promise<{ error: any }> {
+  async deleteUserNotes(userId: string): Promise<{ error: unknown }> {
     try {
       const { error } = await supabase
         .from('user_notes')

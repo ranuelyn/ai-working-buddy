@@ -25,7 +25,7 @@ export type UpdateProfileData = {
 
 class ProfileService {
   // Kullanıcı profili oluştur
-  async createProfile(data: CreateProfileData): Promise<{ profile: UserProfile | null; error: any }> {
+  async createProfile(data: CreateProfileData): Promise<{ profile: UserProfile | null; error: unknown }> {
     try {
       const { data: profile, error } = await supabase
         .from('user_profiles')
@@ -46,7 +46,7 @@ class ProfileService {
   }
 
   // Kullanıcı profilini getir
-  async getProfile(userId: string): Promise<{ profile: UserProfile | null; error: any }> {
+  async getProfile(userId: string): Promise<{ profile: UserProfile | null; error: unknown }> {
     try {
       const { data: profile, error } = await supabase
         .from('user_profiles')
@@ -61,7 +61,7 @@ class ProfileService {
   }
 
   // Kullanıcı profilini güncelle
-  async updateProfile(userId: string, data: UpdateProfileData): Promise<{ profile: UserProfile | null; error: any }> {
+  async updateProfile(userId: string, data: UpdateProfileData): Promise<{ profile: UserProfile | null; error: unknown }> {
     try {
       const { data: profile, error } = await supabase
         .from('user_profiles')
@@ -80,7 +80,7 @@ class ProfileService {
   }
 
   // Kullanıcı profilini sil
-  async deleteProfile(userId: string): Promise<{ error: any }> {
+  async deleteProfile(userId: string): Promise<{ error: unknown }> {
     try {
       const { error } = await supabase
         .from('user_profiles')

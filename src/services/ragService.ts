@@ -17,8 +17,8 @@ export type RAGContext = {
 
 class RAGService {
   private genAI: GoogleGenerativeAI;
-  private embeddingModel: any; // GoogleGenerativeAI model type
-  private textModel: any; // GoogleGenerativeAI model type
+  private embeddingModel: unknown; // GoogleGenerativeAI model type
+  private textModel: unknown; // GoogleGenerativeAI model type
 
   constructor() {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;

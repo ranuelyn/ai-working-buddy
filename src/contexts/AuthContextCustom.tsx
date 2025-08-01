@@ -11,6 +11,7 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
   const context = useContext(AuthContext)
   if (context === undefined) {
@@ -45,7 +46,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         try {
           const parsedUser = JSON.parse(savedUser)
           setUser(parsedUser)
-        } catch (error) {
+        } catch {
           localStorage.removeItem('ai-buddy-user')
         }
       }
@@ -80,7 +81,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       localStorage.setItem('ai-buddy-user', JSON.stringify(user))
 
       return { user, error: null }
-    } catch (error) {
+    } catch {
       return { user: null, error: { message: 'Giriş yapılırken bir hata oluştu' } }
     }
   }
@@ -124,7 +125,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
 
       return { user, error: null }
-    } catch (error) {
+    } catch {
       return { user: null, error: { message: 'Hesap oluşturulurken bir hata oluştu' } }
     }
   }
