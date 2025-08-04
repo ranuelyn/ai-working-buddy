@@ -14,6 +14,7 @@ import { PomodoroTimer } from "./components/PomodoroTimer";
 import { Profile } from "./components/Profile";
 import { StudyMaterial } from "./components/StudyMaterial";
 import { ChatPanel } from './components/ChatPanel';
+import { Notification } from './components/Notification';
 // Context'ler
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 // Sabitler ve tipler
@@ -66,6 +67,13 @@ function AuthenticatedApp() {
   const [earnedBadges, setEarnedBadges] = React.useState(0);
   // **YENİ**: Profile modal state'i
   const [showProfile, setShowProfile] = React.useState(false);
+  
+  // **YENİ**: Bildirim sistemi state'leri
+  const [notifications, setNotifications] = React.useState<Array<{
+    id: string;
+    message: string;
+    type: 'success' | 'info' | 'warning' | 'error';
+  }>>([]);
   // LocalStorage'dan rozet sayısını yükle
   React.useEffect(() => {
     const savedBadges = localStorage.getItem('ai-buddy-badges');
@@ -81,6 +89,17 @@ function AuthenticatedApp() {
   const playTTSImmediately = async (text: string): Promise<void> => {
     return TTSService.playTTSImmediately(text);
   };
+  
+  // **YENİ**: Bildirim ekleme fonksiyonu
+  const addNotification = React.useCallback((message: string, type: 'success' | 'info' | 'warning' | 'error' = 'success') => {
+    const id = Date.now().toString();
+    setNotifications(prev => [...prev, { id, message, type }]);
+  }, []);
+  
+  // **YENİ**: Bildirim kaldırma fonksiyonu
+  const removeNotification = React.useCallback((id: string) => {
+    setNotifications(prev => prev.filter(notification => notification.id !== id));
+  }, []);
   // TTS için önceki soru tracking
   const lastTTSQuestionRef = React.useRef<string>("");
   // **YENİ**: Duplicate soru kontrolü için
@@ -126,11 +145,25 @@ function AuthenticatedApp() {
     setIsPlayingPomodoroTTS,
     handleBreakStart,
     handleStudyStart,
-    handlePomodoroModeChange
-  } = usePomodoro(playTTSImmediately, setBuddyCyclePaused, setShowBuddyQuestion);
+    handlePomodoroModeChange,
+    completedSessions
+  } = usePomodoro(playTTSImmediately, setBuddyCyclePaused, setShowBuddyQuestion, setEarnedBadges, addNotification);
   // **YENİ**: İlk materyal için state
   const [firstMaterial, setFirstMaterial] = React.useState<string | null>(null);
-  const handleSessionStart = (imageBase64: string, studyMinutes: number, breakMinutes: number, ragContextData?: RAGContext) => {
+  
+  // **YENİ**: Seçilen karakter state'i
+  const [selectedCharacter, setSelectedCharacter] = React.useState(0);
+  
+  // **YENİ**: Karakter listesi
+  const characters = [
+    { id: 0, name: "AI Buddy", image: "/assets/character_smiling.png", color: "#7c3aed" },
+    { id: 1, name: "Office 1", image: "/characters/office2.png", color: "#3b82f6" },
+    { id: 2, name: "Office 2", image: "/characters/office3.png", color: "#10b981" },
+    { id: 3, name: "Office 3", image: "/characters/office4.png", color: "#f59e0b" }
+  ];
+  const handleSessionStart = (imageBase64: string, studyMinutes: number, breakMinutes: number, ragContextData?: RAGContext, selectedCharacter?: number) => {
+    console.log("🔄 Yeni session başlatılıyor...");
+    
     setSessionImage(imageBase64);
     setStudyDuration(studyMinutes);
     setBreakDuration(breakMinutes);
@@ -149,12 +182,37 @@ function AuthenticatedApp() {
     setInitialQuestionAsked(false); // İlk soru flag'ini sıfırla
     setWaitingForUserResponse(false); // Yanıt bekleme flag'ini sıfırla
     shouldAskNewQuestionRef.current = false;
+    
     // **YENİ**: Duplicate kontrol ref'lerini temizle
     lastTTSQuestionRef.current = "";
     lastShownQuestionRef.current = "";
+    
+    // **YENİ**: Karakter seçimini sıfırla (default: AI Buddy)
+    setSelectedCharacter(0);
+    
     // **YENİ**: İlk materyali kaydet
     setFirstMaterial(imageBase64);
     setRagContext(ragContextData || null);
+    
+    // **YENİ**: Seçilen karakteri kaydet
+    if (selectedCharacter !== undefined) {
+      setSelectedCharacter(selectedCharacter);
+      console.log(`🎭 Seçilen karakter: ${characters[selectedCharacter]?.name || 'AI Buddy'}`);
+    }
+    
+    // **YENİ**: Mikrofon activity'sini sıfırla
+    setLastMicrophoneActivity(Date.now());
+    
+    // **YENİ**: İlk ders rozetini ver (eğer henüz verilmemişse)
+    setEarnedBadges(prev => {
+      if (prev === 0) {
+        console.log("🏆 İlk ders rozeti kazanıldı!");
+        addNotification("İlk ders materyalini yükledin! İlk rozetini kazandın!", 'success');
+        return 1;
+      }
+      return prev;
+    });
+    
     if (ragContextData) {
       // RAG context data işleniyor
     }
@@ -215,23 +273,35 @@ function AuthenticatedApp() {
       sceneReady: ${sceneReady}
       questionsJson: ${questionsJson ? 'var' : 'yok'}
       questions length: ${questionsJson?.questions?.length || 0}
-      initialQuestionAsked: ${initialQuestionAsked}`);
-    if (sceneReady && questionsJson && questionsJson.questions && !initialQuestionAsked) {
+      initialQuestionAsked: ${initialQuestionAsked}
+      conversationCount: ${conversationCount}`);
+    
+    // **DÜZELTME**: Daha güvenli ilk soru kontrolü
+    if (sceneReady && 
+        questionsJson && 
+        questionsJson.questions && 
+        questionsJson.questions.length > 0 && // **YENİ**: En az bir soru olmalı
+        !initialQuestionAsked && 
+        conversationCount === 0) { // **YENİ**: Henüz hiç soru sorulmamış olmalı
+      
       setBuddyResponse(null);
       setShowBuddyQuestion(false);
       shouldAskNewQuestionRef.current = false; // Flag'i başlangıçta sıfırla
       // **YENİ**: Mikrofon izni ön-yüklemesi (arkaplanda)
       prewarmMicrophone();
+      
       const timeout = setTimeout(() => {
+        console.log("🔄 İlk soru soruluyor...");
         setInitialQuestionAsked(true); // Flag'i set et ki tekrar sormasın
         runBuddyPrompt();
       }, 5000);
+      
       return () => {
         clearTimeout(timeout);
       };
     }
     // eslint-disable-next-line
-  }, [sceneReady, questionsJson, prewarmMicrophone, initialQuestionAsked]);
+  }, [sceneReady, questionsJson, prewarmMicrophone, initialQuestionAsked, conversationCount]);
   // Konuşmayı özetleme fonksiyonu
   const summarizeConversation = async (history: ConversationHistory) => {
     try {
@@ -269,20 +339,40 @@ function AuthenticatedApp() {
       buddyCyclePaused: ${buddyCyclePaused}
       waitingForUserResponse: ${waitingForUserResponse}
       initialQuestionAsked: ${initialQuestionAsked}`);
-    // İlk soru sorulmadan past conversations effect çalışmasın
-    if (pastConversations.length > 0 && initialQuestionAsked && !showBuddyQuestion && !isRecording && !isProcessingResponse && shouldAskNewQuestionRef.current && !isUserQuestionMode && !buddyCyclePaused && !waitingForUserResponse) {
+    
+    // **DÜZELTME**: İlk soru henüz tamamlanmamışsa yeni soru sorma
+    // En az bir konuşma tamamlanmış olmalı ve ilk soru sorulmuş olmalı
+    if (pastConversations.length > 0 && 
+        initialQuestionAsked && 
+        !showBuddyQuestion && 
+        !isRecording && 
+        !isProcessingResponse && 
+        shouldAskNewQuestionRef.current && 
+        !isUserQuestionMode && 
+        !buddyCyclePaused && 
+        !waitingForUserResponse &&
+        conversationHistory.length > 0) { // **YENİ**: En az bir konuşma geçmişi olmalı
+      
       shouldAskNewQuestionRef.current = false; // Flag'i sıfırla
       const timeout = setTimeout(() => {
         // **DÜZELTME**: Timeout içinde tekrar kontrol et
-        if (initialQuestionAsked && !showBuddyQuestion && !isRecording && !isProcessingResponse && !isUserQuestionMode && !buddyCyclePaused && !waitingForUserResponse) {
+        if (initialQuestionAsked && 
+            !showBuddyQuestion && 
+            !isRecording && 
+            !isProcessingResponse && 
+            !isUserQuestionMode && 
+            !buddyCyclePaused && 
+            !waitingForUserResponse &&
+            conversationHistory.length > 0) { // **YENİ**: Konuşma geçmişi kontrolü
           runBuddyPrompt();
         }
-      }, 2000); // 2 saniye bekle, sonra yeni soru sor
+      }, 3000); // **YENİ**: 2 saniye yerine 3 saniye bekle
       return () => clearTimeout(timeout);
     }
-  }, [pastConversations.length, showBuddyQuestion, isRecording, isProcessingResponse, runBuddyPrompt, isUserQuestionMode, buddyCyclePaused, waitingForUserResponse, initialQuestionAsked]);
+  }, [pastConversations.length, showBuddyQuestion, isRecording, isProcessingResponse, runBuddyPrompt, isUserQuestionMode, buddyCyclePaused, waitingForUserResponse, initialQuestionAsked, conversationHistory.length]);
   // 4. Buddy sorusu geldikten sonra delay_seconds kadar bekleyip ekrana göster
   const delayTimeoutRef = React.useRef<NodeJS.Timeout | undefined>(undefined);
+  
   React.useEffect(() => {
     if (buddyResponse && typeof buddyResponse.delay_seconds === "number" && !isUserQuestionMode && !buddyCyclePaused) {
       // Eğer önceki bir timeout varsa temizle
@@ -1355,6 +1445,65 @@ function AuthenticatedApp() {
       {showProfile && (
         <Profile onClose={() => setShowProfile(false)} />
       )}
+      
+      {/* **TEST**: Rozet test butonu (sadece development için) */}
+      {process.env.NODE_ENV === 'development' && (
+        <div style={{
+          position: "absolute",
+          top: "20px",
+          left: "20px",
+          zIndex: 1300,
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px"
+        }}>
+          <button
+            onClick={() => {
+              setEarnedBadges(prev => Math.min(prev + 1, 11));
+              addNotification("Test rozeti kazanıldı!", 'success');
+            }}
+            style={{
+              padding: "8px 16px",
+              background: "#7c3aed",
+              color: "#fff",
+              border: "none",
+              borderRadius: "8px",
+              cursor: "pointer",
+              fontSize: "12px",
+              fontWeight: 600
+            }}
+          >
+            Test Rozet (+1)
+          </button>
+          
+          <button
+            onClick={() => addNotification("Bu bir test bildirimidir!", 'info')}
+            style={{
+              padding: "8px 16px",
+              background: "#3b82f6",
+              color: "#fff",
+              border: "none",
+              borderRadius: "8px",
+              cursor: "pointer",
+              fontSize: "12px",
+              fontWeight: 600
+            }}
+          >
+            Test Bildirim
+          </button>
+        </div>
+      )}
+      
+      {/* **YENİ**: Bildirimler */}
+      {notifications.map((notification, index) => (
+        <Notification
+          key={notification.id}
+          message={notification.message}
+          type={notification.type}
+          onClose={() => removeNotification(notification.id)}
+          top={20 + index * 100}
+        />
+      ))}
     </>
   );
 }

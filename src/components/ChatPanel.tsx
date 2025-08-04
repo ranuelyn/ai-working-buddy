@@ -59,7 +59,8 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                     borderBottom: "1px solid rgba(255,255,255,0.1)",
                     display: "flex",
                     alignItems: "center",
-                    justifyContent: "space-between"
+                    justifyContent: "space-between",
+                    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
                 }}>
                     <span>
                         {activeTab === 'chat' && '💬 Sohbet Geçmişi'}
@@ -127,7 +128,8 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                             alignItems: "center",
                             justifyContent: "center",
                             gap: "8px",
-                            borderBottom: activeTab === 'chat' ? "2px solid #fff" : "2px solid transparent"
+                            borderBottom: activeTab === 'chat' ? "2px solid #fff" : "2px solid transparent",
+                            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
                         }}
                         onMouseEnter={(e) => {
                             if (activeTab !== 'chat') {
@@ -161,7 +163,8 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                             alignItems: "center",
                             justifyContent: "center",
                             gap: "8px",
-                            borderBottom: activeTab === 'notes' ? "2px solid #fff" : "2px solid transparent"
+                            borderBottom: activeTab === 'notes' ? "2px solid #fff" : "2px solid transparent",
+                            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
                         }}
                         onMouseEnter={(e) => {
                             if (activeTab !== 'notes') {
@@ -195,7 +198,8 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                             alignItems: "center",
                             justifyContent: "center",
                             gap: "8px",
-                            borderBottom: activeTab === 'badges' ? "2px solid #fff" : "2px solid transparent"
+                            borderBottom: activeTab === 'badges' ? "2px solid #fff" : "2px solid transparent",
+                            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
                         }}
                         onMouseEnter={(e) => {
                             if (activeTab !== 'badges') {
@@ -225,14 +229,16 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                             display: "flex",
                             flexDirection: "column",
                             gap: "12px",
-                            fontSize: 14
+                            fontSize: 14,
+                            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
                         }}>
                             {chatMessages.length === 0 ? (
                                 <div style={{
                                     color: "#a78bfa",
                                     textAlign: "center",
                                     marginTop: "50%",
-                                    fontStyle: "italic"
+                                    fontStyle: "italic",
+                                    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
                                 }}>
                                     Henüz konuşma yok...
                                 </div>
@@ -256,20 +262,26 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                                             lineHeight: 1.4,
                                             boxShadow: "0 2px 8px rgba(0,0,0,0.15)"
                                         }}>
-                                            <div style={{
-                                                fontSize: 11,
-                                                opacity: 0.8,
-                                                marginBottom: 4,
-                                                fontWeight: 600
-                                            }}>
-                                                {message.type === 'user' ? '👤 Sen' : '🤖 AI Buddy'}
-                                            </div>
-                                            <div>{message.text}</div>
+                                                                    <div style={{
+                            fontSize: 11,
+                            opacity: 0.8,
+                            marginBottom: 4,
+                            fontWeight: 600,
+                            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
+                        }}>
+                            {message.type === 'user' ? '👤 Sen' : '🤖 AI Buddy'}
+                        </div>
+                        <div style={{
+                            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+                            lineHeight: 1.5,
+                            wordBreak: 'break-word'
+                        }}>{message.text}</div>
                                             <div style={{
                                                 fontSize: 10,
                                                 opacity: 0.6,
                                                 marginTop: 4,
-                                                textAlign: 'right'
+                                                textAlign: 'right',
+                                                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
                                             }}>
                                                 {new Date(message.timestamp).toLocaleTimeString('tr-TR', {
                                                     hour: '2-digit',
@@ -293,7 +305,8 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                                     display: "flex",
                                     alignItems: "center",
                                     gap: "8px",
-                                    border: "1px solid rgba(124,58,237,0.3)"
+                                    border: "1px solid rgba(124,58,237,0.3)",
+                                    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
                                 }}>
                                     <div style={{
                                         width: 8,
@@ -320,7 +333,8 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                             borderTop: "1px solid rgba(255,255,255,0.1)",
                             fontSize: 12,
                             color: "#a78bfa",
-                            textAlign: "center"
+                            textAlign: "center",
+                            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
                         }}>
                             Mikrofon kullanarak AI Buddy ile konuşabilirsin
                         </div>
@@ -343,42 +357,44 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                 }
             `}</style>
 
-            {/* Chat Panel Toggle Button */}
-            <button
-                onClick={() => setIsChatPanelOpen(!isChatPanelOpen)}
-                style={{
-                    position: "fixed",
-                    top: 20,
-                    left: isChatPanelOpen ? 420 : 20,
-                    width: 50,
-                    height: 50,
-                    borderRadius: "50%",
-                    border: "1px solid rgba(255,255,255,0.2)",
-                    background: "rgba(0,0,0,0.6)",
-                    backdropFilter: "blur(8px)",
-                    color: "#fff",
-                    fontSize: 20,
-                    cursor: "pointer",
-                    boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
-                    zIndex: 2100,
-                    transition: "all 0.3s ease",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center"
-                }}
-                onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = "scale(1.1)";
-                    e.currentTarget.style.background = "rgba(0,0,0,0.8)";
-                    e.currentTarget.style.boxShadow = "0 6px 24px rgba(0,0,0,0.4)";
-                }}
-                onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = "scale(1)";
-                    e.currentTarget.style.background = "rgba(0,0,0,0.6)";
-                    e.currentTarget.style.boxShadow = "0 4px 20px rgba(0,0,0,0.3)";
-                }}
-            >
-                {isChatPanelOpen ? '←' : '💬'}
-            </button>
+            {/* Chat Panel Toggle Button - Sadece açma butonu */}
+            {!isChatPanelOpen && (
+                <button
+                    onClick={() => setIsChatPanelOpen(true)}
+                    style={{
+                        position: "fixed",
+                        top: 20,
+                        left: 20,
+                        width: 50,
+                        height: 50,
+                        borderRadius: "50%",
+                        border: "1px solid rgba(255,255,255,0.2)",
+                        background: "rgba(0,0,0,0.6)",
+                        backdropFilter: "blur(8px)",
+                        color: "#fff",
+                        fontSize: 20,
+                        cursor: "pointer",
+                        boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+                        zIndex: 2100,
+                        transition: "all 0.3s ease",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center"
+                    }}
+                    onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = "scale(1.1)";
+                        e.currentTarget.style.background = "rgba(0,0,0,0.8)";
+                        e.currentTarget.style.boxShadow = "0 6px 24px rgba(0,0,0,0.4)";
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = "scale(1)";
+                        e.currentTarget.style.background = "rgba(0,0,0,0.6)";
+                        e.currentTarget.style.boxShadow = "0 4px 20px rgba(0,0,0,0.3)";
+                    }}
+                >
+                    💬
+                </button>
+            )}
         </>
     );
 }; 

@@ -13,16 +13,17 @@ interface BadgesAreaProps {
 }
 
 const BADGE_DEFINITIONS: BadgeDefinition[] = [
-  { id: 1, name: "Odak Yolcusu", description: "İlk pomodoro seansını tamamladın!", icon: "🌟", color: "#10b981" },
-  { id: 2, name: "Pomodoro Kaşifi", description: "İkinci seans tamamlandı, yolculuk başladı!", icon: "🔍", color: "#3b82f6" },
-  { id: 3, name: "Acemi Bilgin", description: "Üçüncü seans ile bilgiye doğru ilerliyorsun!", icon: "📚", color: "#8b5cf6" },
-  { id: 4, name: "Odaklanma Savaşçısı", description: "Dördüncü seans, dikkatini kontrol ediyorsun!", icon: "⚔️", color: "#ef4444" },
-  { id: 5, name: "Kıdemli Araştırmacı", description: "Beşinci seans ile araştırma becerilerin gelişiyor!", icon: "🔬", color: "#f59e0b" },
-  { id: 6, name: "Zinciri Kırma", description: "Altıncı seans, engelleris aşıyorsun!", icon: "⛓️", color: "#64748b" },
-  { id: 7, name: "Akademinin Yıldızı", description: "Yedinci seans, artık bir yıldızsın!", icon: "⭐", color: "#fbbf24" },
-  { id: 8, name: "İş Bitirici", description: "Sekizinci seans, hedeflerine ulaşıyorsun!", icon: "✅", color: "#22c55e" },
-  { id: 9, name: "Demir İrade", description: "Dokuzuncu seans, iraден güçlü!", icon: "💪", color: "#6366f1" },
-  { id: 10, name: "Pomodoro Gurusu", description: "Onuncu seans! Artık gerçek bir gurusun!", icon: "🧘", color: "#a855f7" }
+  { id: 1, name: "İlk Ders", description: "İlk ders materyalini yükledin ve çalışmaya başladın!", icon: "📖", color: "#10b981" },
+  { id: 2, name: "Odak Yolcusu", description: "İlk pomodoro seansını tamamladın!", icon: "🌟", color: "#3b82f6" },
+  { id: 3, name: "Pomodoro Kaşifi", description: "İkinci seans tamamlandı, yolculuk başladı!", icon: "🔍", color: "#8b5cf6" },
+  { id: 4, name: "Acemi Bilgin", description: "Üçüncü seans ile bilgiye doğru ilerliyorsun!", icon: "📚", color: "#ef4444" },
+  { id: 5, name: "Odaklanma Savaşçısı", description: "Dördüncü seans, dikkatini kontrol ediyorsun!", icon: "⚔️", color: "#f59e0b" },
+  { id: 6, name: "Kıdemli Araştırmacı", description: "Beşinci seans ile araştırma becerilerin gelişiyor!", icon: "🔬", color: "#64748b" },
+  { id: 7, name: "Zinciri Kırma", description: "Altıncı seans, engelleris aşıyorsun!", icon: "⛓️", color: "#fbbf24" },
+  { id: 8, name: "Akademinin Yıldızı", description: "Yedinci seans, artık bir yıldızsın!", icon: "⭐", color: "#22c55e" },
+  { id: 9, name: "İş Bitirici", description: "Sekizinci seans, hedeflerine ulaşıyorsun!", icon: "✅", color: "#6366f1" },
+  { id: 10, name: "Demir İrade", description: "Dokuzuncu seans, iraden güçlü!", icon: "💪", color: "#a855f7" },
+  { id: 11, name: "Pomodoro Gurusu", description: "Onuncu seans! Artık gerçek bir gurusun!", icon: "🧘", color: "#ec4899" }
 ];
 
 export const BadgesArea: React.FC<BadgesAreaProps> = ({ earnedBadges }) => {
@@ -66,7 +67,8 @@ export const BadgesArea: React.FC<BadgesAreaProps> = ({ earnedBadges }) => {
           color: '#fff',
           display: 'flex',
           alignItems: 'center',
-          gap: '8px'
+          gap: '8px',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
         }}>
           <span>🏆</span>
           Rozetlerim
@@ -79,9 +81,10 @@ export const BadgesArea: React.FC<BadgesAreaProps> = ({ earnedBadges }) => {
           fontWeight: 600,
           background: 'rgba(124, 58, 237, 0.2)',
           padding: '4px 12px',
-          borderRadius: '12px'
+          borderRadius: '12px',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
         }}>
-          {earnedBadges}/10 Rozet
+          {earnedBadges}/11 Rozet
         </div>
       </div>
 
@@ -95,7 +98,7 @@ export const BadgesArea: React.FC<BadgesAreaProps> = ({ earnedBadges }) => {
         marginBottom: '8px'
       }}>
         <div style={{
-          width: `${(earnedBadges / 10) * 100}%`,
+          width: `${(earnedBadges / 11) * 100}%`,
           height: '100%',
           background: 'linear-gradient(90deg, #10b981 0%, #3b82f6 50%, #8b5cf6 100%)',
           borderRadius: '4px',
@@ -124,10 +127,10 @@ export const BadgesArea: React.FC<BadgesAreaProps> = ({ earnedBadges }) => {
               style={{
                 background: isEarned 
                   ? `linear-gradient(135deg, ${badge.color}22 0%, ${badge.color}11 100%)`
-                  : 'rgba(255,255,255,0.05)',
+                  : 'rgba(255,255,255,0.08)',
                 border: isEarned 
                   ? `1px solid ${badge.color}44`
-                  : '1px solid rgba(255,255,255,0.1)',
+                  : '1px solid rgba(255,255,255,0.15)',
                 borderRadius: '12px',
                 padding: '16px',
                 transition: 'all 0.3s ease',
@@ -136,8 +139,8 @@ export const BadgesArea: React.FC<BadgesAreaProps> = ({ earnedBadges }) => {
                   ? `0 0 20px ${badge.color}66`
                   : isEarned 
                     ? `0 2px 8px ${badge.color}22`
-                    : '0 2px 8px rgba(0,0,0,0.1)',
-                opacity: isEarned ? 1 : 0.4,
+                    : '0 2px 8px rgba(0,0,0,0.15)',
+                opacity: isEarned ? 1 : 0.7,
                 animation: isAnimating ? 'badgeEarn 2s ease' : 'none'
               }}
             >
@@ -149,7 +152,8 @@ export const BadgesArea: React.FC<BadgesAreaProps> = ({ earnedBadges }) => {
               }}>
                 <div style={{
                   fontSize: '24px',
-                  filter: isEarned ? 'none' : 'grayscale(1)',
+                  filter: isEarned ? 'none' : 'grayscale(0.3)',
+                  opacity: isEarned ? 1 : 0.8,
                   transform: isAnimating ? 'scale(1.2)' : 'scale(1)',
                   transition: 'transform 0.3s ease'
                 }}>
@@ -161,22 +165,24 @@ export const BadgesArea: React.FC<BadgesAreaProps> = ({ earnedBadges }) => {
                     margin: 0,
                     fontSize: '14px',
                     fontWeight: 600,
-                    color: isEarned ? '#fff' : '#666',
-                    marginBottom: '2px'
+                    color: isEarned ? '#fff' : '#ccc',
+                    marginBottom: '2px',
+                    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
                   }}>
                     {badge.name}
                   </h4>
                   
                   <div style={{
                     fontSize: '11px',
-                    color: isEarned ? '#a78bfa' : '#555',
-                    fontWeight: 500
+                    color: isEarned ? '#a78bfa' : '#999',
+                    fontWeight: 500,
+                    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
                   }}>
                     #{badge.id} Rozet
                   </div>
                 </div>
 
-                {isEarned && (
+                {isEarned ? (
                   <div style={{
                     width: '20px',
                     height: '20px',
@@ -191,6 +197,21 @@ export const BadgesArea: React.FC<BadgesAreaProps> = ({ earnedBadges }) => {
                   }}>
                     ✓
                   </div>
+                ) : (
+                  <div style={{
+                    width: '20px',
+                    height: '20px',
+                    borderRadius: '50%',
+                    background: 'rgba(255,255,255,0.1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '12px',
+                    color: '#999',
+                    border: '1px solid rgba(255,255,255,0.2)'
+                  }}>
+                    🔒
+                  </div>
                 )}
               </div>
               
@@ -198,7 +219,8 @@ export const BadgesArea: React.FC<BadgesAreaProps> = ({ earnedBadges }) => {
                 margin: 0,
                 fontSize: '12px',
                 lineHeight: 1.4,
-                color: isEarned ? '#e5e7eb' : '#666'
+                color: isEarned ? '#e5e7eb' : '#bbb',
+                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
               }}>
                 {badge.description}
               </p>
@@ -213,11 +235,12 @@ export const BadgesArea: React.FC<BadgesAreaProps> = ({ earnedBadges }) => {
         borderTop: '1px solid rgba(255,255,255,0.1)',
         fontSize: '11px',
         color: '#a78bfa',
-        textAlign: 'center'
+        textAlign: 'center',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
       }}>
-        {earnedBadges === 0 && "İlk pomodoro seansını tamamlayarak ilk rozetini kazan!"}
-        {earnedBadges > 0 && earnedBadges < 10 && `${10 - earnedBadges} rozet daha kaldı!`}
-        {earnedBadges === 10 && "🎉 Tüm rozetleri topladın! Pomodoro Gurusu oldun!"}
+        {earnedBadges === 0 && "İlk ders materyalini yükleyerek ilk rozetini kazan!"}
+        {earnedBadges > 0 && earnedBadges < 11 && `${11 - earnedBadges} rozet daha kaldı!`}
+        {earnedBadges === 11 && "🎉 Tüm rozetleri topladın! Pomodoro Gurusu oldun!"}
       </div>
 
       {/* CSS Animations */}
