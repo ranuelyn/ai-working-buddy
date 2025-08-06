@@ -281,6 +281,8 @@ ${allText.substring(0, 5000)} // İlk 5000 karakter
 
       const enhancedPrompt = `${originalPrompt}
 
+**MATERYAL BİLGİLERİNE ERİŞİMİN VAR - BU BİLGİLERİ KULLAN:**
+
 DERS MATERYALİ ÖZETİ:
 ${ragContext.summary}
 
@@ -289,7 +291,7 @@ ${contextText}
 
 Toplam ${ragContext.totalPages} sayfa/görsel işlendi.
 
-Şimdi yukarıdaki materyal bilgilerini kullanarak yanıt ver.`;
+**ÖNEMLİ:** Yukarıdaki materyal bilgilerini kullanarak yanıt ver. Bu bilgilere erişimin var ve bunları kullanman gerekiyor.`;
 
       return enhancedPrompt;
     } catch (error) {

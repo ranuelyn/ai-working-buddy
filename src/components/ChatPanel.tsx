@@ -15,7 +15,7 @@ interface ChatPanelProps {
     isProcessingResponse: boolean;
     isMusicPlayerMinimized: boolean;
     earnedBadges: number;
-    setShowProfile: (show: boolean) => void;
+    onReturnToHome: () => void;
 }
 
 export const ChatPanel: React.FC<ChatPanelProps> = ({
@@ -30,7 +30,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     isProcessingResponse,
     isMusicPlayerMinimized,
     earnedBadges,
-    setShowProfile
+    onReturnToHome
 }) => {
     return (
         <>
@@ -69,26 +69,29 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                     </span>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <button
-                            onClick={() => setShowProfile(true)}
+                            onClick={onReturnToHome}
                             style={{
-                                background: "transparent",
-                                border: "none",
-                                color: "#a78bfa",
-                                fontSize: 18,
+                                background: "rgba(239, 68, 68, 0.1)",
+                                border: "1px solid rgba(239, 68, 68, 0.3)",
+                                color: "#fca5a5",
+                                fontSize: 14,
                                 cursor: "pointer",
-                                padding: "4px 8px",
-                                borderRadius: "4px",
-                                transition: "all 0.2s ease"
+                                padding: "6px 12px",
+                                borderRadius: "6px",
+                                transition: "all 0.2s ease",
+                                fontWeight: 600
                             }}
                             onMouseEnter={(e) => {
-                                e.currentTarget.style.background = "rgba(167, 139, 250, 0.1)";
+                                e.currentTarget.style.background = "rgba(239, 68, 68, 0.2)";
+                                e.currentTarget.style.transform = "scale(1.05)";
                             }}
                             onMouseLeave={(e) => {
-                                e.currentTarget.style.background = "transparent";
+                                e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)";
+                                e.currentTarget.style.transform = "scale(1)";
                             }}
-                            title="Profil"
+                            title="Dersi Bitir"
                         >
-                            👤
+                            🏁 Dersi Bitir
                         </button>
                         <button
                             onClick={() => setIsChatPanelOpen(false)}

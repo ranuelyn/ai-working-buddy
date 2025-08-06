@@ -100,6 +100,16 @@ function AuthenticatedApp() {
   const removeNotification = React.useCallback((id: string) => {
     setNotifications(prev => prev.filter(notification => notification.id !== id));
   }, []);
+  
+  // **YENİ**: Anasayfaya dönme fonksiyonu
+  const handleReturnToHome = React.useCallback(() => {
+    // Sadece session'ı bitir ve anasayfaya dön
+    setSessionStarted(false);
+    setShowPositionSelector(false);
+    setLoading(false);
+    setSceneReady(false);
+  }, []);
+  
   // TTS için önceki soru tracking
   const lastTTSQuestionRef = React.useRef<string>("");
   // **YENİ**: Duplicate soru kontrolü için
@@ -455,17 +465,19 @@ function AuthenticatedApp() {
   };
   // Ses kaydını işleme ve Gemini'ya gönderme
   const processAudioResponse = async (audioBlob: Blob) => {
+    // İptal edilmişse hiçbir işlem yapma
+    if (userRecordingCancelledRef.current) {
+      setIsProcessingResponse(false);
+      return;
+    }
     setIsProcessingResponse(true);
-    setWaitingForUserResponse(false); // Kullanıcı yanıt verdi
+    setWaitingForUserResponse(false);
     // **YENİ**: Kafa çevirme durumunu güncelle - yanıt vermeye başla
     console.log("🔄 Kullanıcı yanıt veriyor - kafa engaged durumuna geçiyor");
     setHeadTurnState('engaged');
     setHeadTurn(getHeadTurnForCamera(camera)); // Kullanıcının pozisyonuna göre dön
     try {
-      const { userText, aiResponse } = await AIService.processAudioResponse(audioBlob, conversationHistory, questionsJson, ragContext || undefined);
-      // **YENİ**: Kullanıcı yanıtını chat'e ekle
-      addChatMessage('user', userText);
-      // Konuşma geçmişini güncelle - kullanıcı yanıtını ekle
+      // **DÜZELTME**: Önce conversation history'yi güncelle, sonra AI servisine gönder
       const newHistory = [...conversationHistory];
       if (buddyResponse) {
         // Eğer history boşsa, ilk AI sorusunu ekle
@@ -475,6 +487,13 @@ function AuthenticatedApp() {
             USER: ""
           });
         }
+      }
+      
+      const { userText, aiResponse } = await AIService.processAudioResponse(audioBlob, newHistory, questionsJson, ragContext || undefined);
+      // **YENİ**: Kullanıcı yanıtını chat'e ekle
+      addChatMessage('user', userText);
+      // Konuşma geçmişini güncelle - kullanıcı yanıtını ekle
+      if (buddyResponse) {
         // Kullanıcı yanıtını güncelle
         if (newHistory.length > 0) {
           newHistory[newHistory.length - 1].USER = userText;
@@ -735,18 +754,26 @@ function AuthenticatedApp() {
     setHeadTurnState('engaged');
     setHeadTurn(getHeadTurnForCamera(camera)); // Kullanıcının pozisyonuna göre dön
     try {
-      const { userText, aiResponse } = await AIService.processUserQuestionAudio(audioBlob, conversationHistory, questionsJson, ragContext || undefined);
-      // **YENİ**: Kullanıcı sorusunu chat'e ekle
-      addChatMessage('user', userText);
-      // **DÜZELTME**: Kullanıcı soru modunda da conversation history'yi güncelle
-      // Eğer önceki buddy sorusu varsa ve bu bir normal cevap değilse, yeni bir diyalog başlat
+      // **DÜZELTME**: Önce conversation history'yi güncelle, sonra AI servisine gönder
       const newHistory = [...conversationHistory];
       if (buddyResponse && buddyResponse.ai_question && buddyResponse.target_question_number !== "kullanici_sorusu") {
         // Bu bir buddy sorusuna cevap değil, kullanıcının kendi sorusu
         newHistory.push({
           AI: "", // AI henüz cevap vermedi
-          USER: userText
+          USER: ""
         });
+      }
+      
+      const { userText, aiResponse } = await AIService.processUserQuestionAudio(audioBlob, newHistory, questionsJson, ragContext || undefined);
+      // **YENİ**: Kullanıcı sorusunu chat'e ekle
+      addChatMessage('user', userText);
+      // **DÜZELTME**: Kullanıcı soru modunda da conversation history'yi güncelle
+      // Eğer önceki buddy sorusu varsa ve bu bir normal cevap değilse, yeni bir diyalog başlat
+      if (buddyResponse && buddyResponse.ai_question && buddyResponse.target_question_number !== "kullanici_sorusu") {
+        // Bu bir buddy sorusuna cevap değil, kullanıcının kendi sorusu
+        if (newHistory.length > 0 && newHistory[newHistory.length - 1].AI === "") {
+          newHistory[newHistory.length - 1].USER = userText;
+        }
       }
       setConversationHistory(newHistory);
       if (aiResponse) {
@@ -764,7 +791,7 @@ function AuthenticatedApp() {
         setShowBuddyQuestion(true);
         setIsProcessingResponse(false);
         // **DÜZELTME**: AI cevabını conversation history'ye ekle
-        const updatedHistory = [...conversationHistory];
+        const updatedHistory = [...newHistory];
         if (updatedHistory.length > 0 && updatedHistory[updatedHistory.length - 1].AI === "") {
           updatedHistory[updatedHistory.length - 1].AI = aiResponse.ai_response_text;
         } else {
@@ -1058,7 +1085,7 @@ function AuthenticatedApp() {
         isProcessingResponse={isProcessingResponse}
         isMusicPlayerMinimized={isMusicPlayerMinimized}
         earnedBadges={earnedBadges}
-        setShowProfile={setShowProfile}
+        onReturnToHome={handleReturnToHome}
       />
       {/* Mikrofon butonu */}
       {showBuddyQuestion && buddyResponse && !isRecording && !isProcessingResponse && (
@@ -1444,54 +1471,6 @@ function AuthenticatedApp() {
       {/* Profile Modal */}
       {showProfile && (
         <Profile onClose={() => setShowProfile(false)} />
-      )}
-      
-      {/* **TEST**: Rozet test butonu (sadece development için) */}
-      {process.env.NODE_ENV === 'development' && (
-        <div style={{
-          position: "absolute",
-          top: "20px",
-          left: "20px",
-          zIndex: 1300,
-          display: "flex",
-          flexDirection: "column",
-          gap: "8px"
-        }}>
-          <button
-            onClick={() => {
-              setEarnedBadges(prev => Math.min(prev + 1, 11));
-              addNotification("Test rozeti kazanıldı!", 'success');
-            }}
-            style={{
-              padding: "8px 16px",
-              background: "#7c3aed",
-              color: "#fff",
-              border: "none",
-              borderRadius: "8px",
-              cursor: "pointer",
-              fontSize: "12px",
-              fontWeight: 600
-            }}
-          >
-            Test Rozet (+1)
-          </button>
-          
-          <button
-            onClick={() => addNotification("Bu bir test bildirimidir!", 'info')}
-            style={{
-              padding: "8px 16px",
-              background: "#3b82f6",
-              color: "#fff",
-              border: "none",
-              borderRadius: "8px",
-              cursor: "pointer",
-              fontSize: "12px",
-              fontWeight: 600
-            }}
-          >
-            Test Bildirim
-          </button>
-        </div>
       )}
       
       {/* **YENİ**: Bildirimler */}

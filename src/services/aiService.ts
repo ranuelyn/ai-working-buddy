@@ -78,6 +78,19 @@ export class AIService {
             let enhancedPrompt = BUDDY_PROMPT;
             if (ragContext) {
                 enhancedPrompt = await ragService.enhancePromptWithRAG(BUDDY_PROMPT, ragContext);
+            } else if (questionsJson && questionsJson.questions && questionsJson.questions.length > 0) {
+                // RAG context yoksa ama questionsJson varsa, soruları ekle
+                enhancedPrompt += `\n\n**MATERYAL BİLGİLERİNE ERİŞİMİN VAR - BU SORULARI KULLAN:**
+
+DERS MATERYALİ SORULARI:
+`;
+                questionsJson.questions.forEach((q) => {
+                    enhancedPrompt += `Soru ${q.question_number}: ${q.question_text}\n`;
+                });
+                enhancedPrompt += `\n**ÖNEMLİ:** Bu soruları kullanarak yanıt ver. Materyal bilgilerine erişimin var ve bunları kullanman gerekiyor.`;
+            } else {
+                // Hiçbiri yoksa basit prompt kullan
+                enhancedPrompt += `\n\n**Not:** Şu anda ders materyali yüklenmemiş durumda. Genel bilgilerinle yanıt ver.`;
             }
 
             const body = JSON.stringify({
@@ -161,13 +174,24 @@ export class AIService {
             // AI yanıtını al
             let enhancedPrompt = CONVERSATION_PROMPT;
 
+            // RAG context varsa öncelikle onu kullan
             if (ragContext) {
                 enhancedPrompt = await ragService.enhancePromptWithRAG(CONVERSATION_PROMPT, ragContext, userText);
-            } else if (questionsJson && questionsJson.questions) {
-                enhancedPrompt += `\n\nDERS MATERYALİ SORULARI:\n`;
+            } 
+            // RAG context yoksa ama questionsJson varsa, soruları ekle
+            else if (questionsJson && questionsJson.questions && questionsJson.questions.length > 0) {
+                enhancedPrompt += `\n\n**MATERYAL BİLGİLERİNE ERİŞİMİN VAR - BU SORULARI KULLAN:**
+
+DERS MATERYALİ SORULARI:
+`;
                 questionsJson.questions.forEach((q) => {
                     enhancedPrompt += `Soru ${q.question_number}: ${q.question_text}\n`;
                 });
+                enhancedPrompt += `\n**ÖNEMLİ:** Bu soruları kullanarak yanıt ver. Materyal bilgilerine erişimin var ve bunları kullanman gerekiyor.`;
+            }
+            // Hiçbiri yoksa basit prompt kullan
+            else {
+                enhancedPrompt += `\n\n**Not:** Şu anda ders materyali yüklenmemiş durumda. Genel bilgilerinle yanıt ver.`;
             }
 
             enhancedPrompt += "\n\nCONVERSATION HISTORY:\n" + newHistory.map(entry =>
@@ -247,13 +271,24 @@ export class AIService {
             // AI yanıtını al
             let enhancedPrompt = CONVERSATION_PROMPT;
 
+            // RAG context varsa öncelikle onu kullan
             if (ragContext) {
                 enhancedPrompt = await ragService.enhancePromptWithRAG(CONVERSATION_PROMPT, ragContext, userText);
-            } else if (questionsJson && questionsJson.questions) {
-                enhancedPrompt += `\n\nDERS MATERYALİ SORULARI:\n`;
+            } 
+            // RAG context yoksa ama questionsJson varsa, soruları ekle
+            else if (questionsJson && questionsJson.questions && questionsJson.questions.length > 0) {
+                enhancedPrompt += `\n\n**MATERYAL BİLGİLERİNE ERİŞİMİN VAR - BU SORULARI KULLAN:**
+
+DERS MATERYALİ SORULARI:
+`;
                 questionsJson.questions.forEach((q) => {
                     enhancedPrompt += `Soru ${q.question_number}: ${q.question_text}\n`;
                 });
+                enhancedPrompt += `\n**ÖNEMLİ:** Bu soruları kullanarak yanıt ver. Materyal bilgilerine erişimin var ve bunları kullanman gerekiyor.`;
+            }
+            // Hiçbiri yoksa basit prompt kullan
+            else {
+                enhancedPrompt += `\n\n**Not:** Şu anda ders materyali yüklenmemiş durumda. Genel bilgilerinle yanıt ver.`;
             }
 
             enhancedPrompt += "\n\nCONVERSATION HISTORY:\n" + conversationHistory.map(entry =>
