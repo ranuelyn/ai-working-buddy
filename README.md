@@ -53,7 +53,7 @@ Bu kısımda ders materyalinizi yükleyebilir, pomodoro için ders ve mola süre
 <img width="1919" height="908" alt="image" src="https://github.com/user-attachments/assets/3fe78fbf-419b-4555-8021-5fddaddcf0cb" />
 <img width="1919" height="907" alt="image" src="https://github.com/user-attachments/assets/3825a94e-e74b-4620-927d-cfef7f58a809" />
 
-<br/>Üstelik ders esnasında aktif bir şekilde not almak çok kolay! Sadece "Notlarım" kısmından dilediğini yazman yeterli. Bir sonraki sefer giriş yaptığında notların senin için hazır olacak!
+<br/>Üstelik ders esnasında aktif bir şekilde not almak oldukça kolay! Sadece "Notlar" kısmına girmen ve dilediğin notu alman yeterli. Bir sonraki sefer giriş yaptığında notların senin için hazır olacak!
 
 <img width="1919" height="907" alt="image" src="https://github.com/user-attachments/assets/c42e668e-cc4a-4186-b534-49457811c19e" />
 
