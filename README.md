@@ -53,11 +53,12 @@ Bu kısımda ders materyalinizi yükleyebilir, pomodoro için ders ve mola süre
 <img width="1919" height="908" alt="image" src="https://github.com/user-attachments/assets/3fe78fbf-419b-4555-8021-5fddaddcf0cb" />
 <img width="1919" height="907" alt="image" src="https://github.com/user-attachments/assets/3825a94e-e74b-4620-927d-cfef7f58a809" />
 
-<br/>Üstelik ders esnasında aktif bir şekilde not almak oldukça kolay! Sadece "Notlar" kısmına girmen ve dilediğin notu alman yeterli. Bir sonraki sefer giriş yaptığında notların senin için hazır olacak!
-
+<br/>Üstelik ders esnasında aktif bir şekilde not almak oldukça kolay! Sadece "Notlar" kısmına girmen ve dilediğin notu alman yeterli. Bir sonraki sefer giriş yaptığında notların senin için hazır olacak! 🙋🏻‍♀️
+<br/>
 <img width="1919" height="907" alt="image" src="https://github.com/user-attachments/assets/c42e668e-cc4a-4186-b534-49457811c19e" />
 
-<br/>Rozet sistemimizi de yine bu kısımdan kolaylıkla takip edebilirsin! Rozet almanın en keyifli yolu, AI Buddy ile derslerine hız kesmeden odaklan! 🌟🚀<br/>
+<br/>Rozet sistemimizi de yine bu kısımdan kolaylıkla takip edebilirsin! Rozet almanın en keyifli yolu, AI Buddy ile derslerine hız kesmeden odaklan! 🌟🚀
+<br/>
 <img width="1919" height="909" alt="image" src="https://github.com/user-attachments/assets/856cf83b-3a3a-4cbe-b54e-91280152b316" />
 
 # Rozet Sistemimize Bir Göz Atalım 🥳
